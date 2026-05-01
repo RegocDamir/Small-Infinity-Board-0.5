@@ -1,0 +1,115 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0a;font-family:'Roboto',sans-serif;color:rgba(255,255,255,0.8);font-size:12px;padding:12px;height:100vh;overflow:auto}
+.top{display:flex;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.07)}
+.top-title{font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:#6FA289}
+input[type="text"]{background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);font-family:'Roboto',sans-serif;font-size:11px;width:100%;outline:none;padding:3px 0;transition:border-color 0.15s}
+input[type="text"]:focus{border-color:#6FA289;color:#fff}
+input.num{background:rgba(111,162,137,0.06);border:1px solid rgba(111,162,137,0.25);color:#6FA289;font-family:'Roboto',sans-serif;font-size:12px;width:54px;outline:none;padding:5px 4px;text-align:center;font-weight:500;transition:border-color 0.15s;-moz-appearance:textfield;border-radius:3px}
+input.num::-webkit-outer-spin-button,input.num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input.num:focus{border-color:#6FA289;background:rgba(111,162,137,0.1)}
+.lbl{font-size:8px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.25);margin-bottom:6px;display:block}
+.title-row{margin-bottom:12px}
+.row{padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.row:last-of-type{border-bottom:none}
+.row-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.row-top input[type="text"]{flex:1}
+.row-mid{display:flex;align-items:center;gap:8px}
+.btn-step{background:rgba(111,162,137,0.08);border:1px solid rgba(111,162,137,0.3);color:#6FA289;cursor:pointer;width:26px;height:26px;border-radius:4px;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;font-family:'Roboto',sans-serif;font-weight:400;transition:all 0.12s;flex-shrink:0;padding:0;user-select:none}
+.btn-step:hover{background:rgba(111,162,137,0.2);border-color:#6FA289;color:#fff}
+.btn-step:active{background:rgba(111,162,137,0.32)}
+.row-mid input[type="range"]{flex:1;-webkit-appearance:none;appearance:none;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;outline:none;cursor:pointer;margin:0 4px}
+.row-mid input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;background:#6FA289;cursor:pointer;border:none;box-shadow:0 0 4px rgba(111,162,137,0.4)}
+.row-mid input[type="range"]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#6FA289;cursor:pointer;border:none;box-shadow:0 0 4px rgba(111,162,137,0.4)}
+.del{background:none;border:none;color:rgba(255,255,255,0.18);cursor:pointer;font-size:14px;padding:2px 5px;font-family:monospace;transition:color 0.1s;flex-shrink:0}
+.del:hover{color:#E84040}
+.add-btn{background:transparent;border:1px dashed rgba(255,255,255,0.12);color:rgba(255,255,255,0.3);font-size:8px;letter-spacing:0.1em;padding:7px;width:100%;cursor:pointer;margin-top:10px;font-family:'Roboto',sans-serif;transition:all 0.15s;text-transform:uppercase}
+.add-btn:hover{border-color:#6FA289;color:#6FA289}
+#dc-data{display:none}
+</style>
+</head><body>
+
+<div class="top"><span class="top-title">Controller</span></div>
+
+<div class="title-row">
+  <span class="lbl">Chart title</span>
+  <input type="text" id="title" value="Data Gata" oninput="push()">
+</div>
+
+<div>
+  <span class="lbl">Rows</span>
+  <div id="rows"></div>
+  <button class="add-btn" onclick="addRow()">+ row</button>
+</div>
+
+<input type="hidden" id="dc-data">
+
+<script>
+let data = {
+  title: 'Data Gata',
+  rows: [
+    {l:'Alpha',   a:80},
+    {l:'Beta',    a:65},
+    {l:'Gamma',   a:91},
+    {l:'Delta',   a:44},
+    {l:'Epsilon', a:73},
+  ]
+};
+
+const STEP = 1, RANGE_MIN = 0, RANGE_MAX = 100;
+
+function buildRows() {
+  const root = document.getElementById('rows');
+  root.innerHTML = data.rows.map((r,i) => `
+    <div class="row" data-i="${i}">
+      <div class="row-top">
+        <input type="text" value="${r.l}" oninput="data.rows[${i}].l=this.value;push()" placeholder="Label">
+        <button class="del" onclick="removeRow(${i})" title="Delete row">×</button>
+      </div>
+      <div class="row-mid">
+        <button class="btn-step" onclick="step(${i},-${STEP})" title="−${STEP}">−</button>
+        <input class="num" type="number" value="${r.a}" oninput="setVal(${i},this.value)">
+        <button class="btn-step" onclick="step(${i},${STEP})" title="+${STEP}">+</button>
+        <input type="range" min="${RANGE_MIN}" max="${RANGE_MAX}" value="${r.a}" oninput="setVal(${i},this.value);syncNum(${i},this.value)">
+      </div>
+    </div>
+  `).join('');
+}
+
+function syncNum(i, v) {
+  const r = document.querySelector(`.row[data-i="${i}"] .num`);
+  if (r) r.value = v;
+}
+function syncRange(i, v) {
+  const r = document.querySelector(`.row[data-i="${i}"] input[type="range"]`);
+  if (r) r.value = v;
+}
+
+function setVal(i, v) {
+  const n = +v;
+  data.rows[i].a = isNaN(n) ? 0 : n;
+  syncRange(i, data.rows[i].a);
+  push();
+}
+
+function step(i, d) {
+  data.rows[i].a = (+data.rows[i].a || 0) + d;
+  syncNum(i, data.rows[i].a);
+  // Range only reflects values within its bounds — anything outside just doesn't move the slider
+  syncRange(i, Math.max(RANGE_MIN, Math.min(RANGE_MAX, data.rows[i].a)));
+  push();
+}
+
+function addRow()    { data.rows.push({l:'New', a:50}); buildRows(); push(); }
+function removeRow(i){ data.rows.splice(i,1); buildRows(); push(); }
+
+function push() {
+  data.title = document.getElementById('title').value;
+  document.getElementById('dc-data').value = JSON.stringify(data);
+}
+
+buildRows();
+push();
+</script></body></html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;font-family:'Roboto',sans-serif;padding:20px;color:rgba(255,255,255,0.85)}
+h3{font-size:10px;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:16px}
+.waffle{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;width:190px}
+.cell{aspect-ratio:1;border-radius:2px;opacity:0;transition:opacity 0.12s ease}
+.legend{display:flex;flex-direction:column;gap:7px;padding-left:16px}
+.leg{display:flex;align-items:center;gap:7px;font-size:9px;color:rgba(255,255,255,0.4)}
+.dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.wrap{display:flex;align-items:flex-start}
+</style></head><body>
+<h3 id="ttl">Data Gata</h3>
+<div class="wrap"><div class="waffle" id="waf"></div><div class="legend" id="leg"></div></div>
+<script>
+
+const COLORS=['#6FA289','#00B09A','#2B79E0','#E87820','#E84040','#4DC547','#9B59B6','#F5F0D8'];
+
+function getMyId(){try{const me=window.frameElement;if(!me)return null;const n=me.closest('[id^="node-"]');return n?n.id.replace('node-',''):null;}catch(e){return null;}}
+
+function readController(){
+  // Strategy 1: read via connections + contentDocument
+  try{
+    const myId=getMyId();
+    if(myId){
+      const conns=(typeof connections!=='undefined'?connections:[])||(window.parent&&window.parent.connections)||[];
+      for(const c of conns){
+        if(c.from!==myId&&c.to!==myId)continue;
+        const oid=c.from===myId?c.to:c.from;
+        const oNode=window.parent.document.getElementById('node-'+oid);
+        const frame=oNode&&oNode.querySelector('.node-html-frame');
+        const doc=frame&&(frame.contentDocument||(frame.contentWindow&&frame.contentWindow.document));
+        const el=doc&&doc.querySelector('.dc-data');
+        if(el&&el.value){try{return JSON.parse(el.value);}catch(e){}}
+      }
+    }
+  }catch(e){}
+  // Strategy 2: broadcast global
+  try{if(window.parent&&window.parent._DC_DATA)return window.parent._DC_DATA;}catch(e){}
+  return null;
+}
+
+let _lastData=null;
+function poll(){
+  const d=readController();
+  const s=JSON.stringify(d);
+  const prev=JSON.stringify(_lastData);
+  if(s!==prev){_lastData=d;render();}
+}
+setInterval(poll,120);
+try{window.parent.addEventListener('dc:update',()=>{const d=readController();if(d){_lastData=d;render();}});}catch(e){}
+
+function getRows(){const c=readController();if(c&&c.rows&&c.rows.length){const t=c.rows.reduce((s,r)=>s+r.a,0)||1;return c.rows.map((r,i)=>({l:r.l,v:Math.round(r.a/t*100),col:COLORS[i%COLORS.length]}));}return[{l:'Alpha',v:34},{l:'Beta',v:25},{l:'Gamma',v:18},{l:'Delta',v:12},{l:'Other',v:11}].map((d,i)=>({...d,col:COLORS[i%COLORS.length]}));}
+function render(){const rows=getRows();const c=readController();if(c&&c.title)document.getElementById('ttl').textContent=c.title;const el=document.getElementById('waf');const leg=document.getElementById('leg');el.innerHTML='';leg.innerHTML='';const cells=[];let tot=0;rows.forEach(r=>{const n=Math.min(r.v,100-tot);tot+=n;for(let i=0;i<n;i++)cells.push(r.col);leg.innerHTML+=`<div class="leg"><div class="dot" style="background:${r.col}"></div>${r.l} ${r.v}%</div>`;});while(cells.length<100)cells.push('rgba(255,255,255,0.04)');cells.slice(0,100).forEach((col,i)=>{const d=document.createElement('div');d.className='cell';d.style.cssText=`background:${col};transition-delay:${i*0.007}s`;el.appendChild(d);});setTimeout(()=>document.querySelectorAll('.cell').forEach(c=>c.style.opacity='1'),40);}
+render();
+</script></body></html>

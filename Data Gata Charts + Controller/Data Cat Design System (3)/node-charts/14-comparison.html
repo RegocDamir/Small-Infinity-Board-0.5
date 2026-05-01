@@ -1,0 +1,61 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;font-family:'Roboto',sans-serif;padding:20px;color:rgba(255,255,255,0.85)}
+h3{font-size:10px;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:12px}
+.row{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+.lbl{font-size:10px;color:rgba(255,255,255,0.4);width:76px;flex-shrink:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bars{flex:1;display:flex;flex-direction:column;gap:2px}
+.track{height:12px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden}
+.fill{height:100%;border-radius:2px;width:0;transition:width 1s cubic-bezier(.4,0,.2,1)}
+.fa{background:#6FA289}.fb{background:#2B79E0}
+.legend{display:flex;gap:16px;margin-bottom:12px}
+.leg{display:flex;align-items:center;gap:5px;font-size:9px;color:rgba(255,255,255,0.4)}
+.dot{width:9px;height:5px;border-radius:1px}
+</style></head><body>
+<h3 id="ttl">Data Gata</h3>
+<div class="legend"><div class="leg"><div class="dot" style="background:#6FA289"></div>Series A</div><div class="leg"><div class="dot" style="background:#2B79E0"></div>Series B</div></div>
+<div id="chart"></div>
+<script>
+
+const COLORS=['#6FA289','#00B09A','#2B79E0','#E87820','#E84040','#4DC547','#9B59B6','#F5F0D8'];
+
+function getMyId(){try{const me=window.frameElement;if(!me)return null;const n=me.closest('[id^="node-"]');return n?n.id.replace('node-',''):null;}catch(e){return null;}}
+
+function readController(){
+  // Strategy 1: read via connections + contentDocument
+  try{
+    const myId=getMyId();
+    if(myId){
+      const conns=(typeof connections!=='undefined'?connections:[])||(window.parent&&window.parent.connections)||[];
+      for(const c of conns){
+        if(c.from!==myId&&c.to!==myId)continue;
+        const oid=c.from===myId?c.to:c.from;
+        const oNode=window.parent.document.getElementById('node-'+oid);
+        const frame=oNode&&oNode.querySelector('.node-html-frame');
+        const doc=frame&&(frame.contentDocument||(frame.contentWindow&&frame.contentWindow.document));
+        const el=doc&&doc.querySelector('.dc-data');
+        if(el&&el.value){try{return JSON.parse(el.value);}catch(e){}}
+      }
+    }
+  }catch(e){}
+  // Strategy 2: broadcast global
+  try{if(window.parent&&window.parent._DC_DATA)return window.parent._DC_DATA;}catch(e){}
+  return null;
+}
+
+let _lastData=null;
+function poll(){
+  const d=readController();
+  const s=JSON.stringify(d);
+  const prev=JSON.stringify(_lastData);
+  if(s!==prev){_lastData=d;render();}
+}
+setInterval(poll,120);
+try{window.parent.addEventListener('dc:update',()=>{const d=readController();if(d){_lastData=d;render();}});}catch(e){}
+
+function getRows(){const c=readController();if(c&&c.rows&&c.rows.length)return c.rows.map(r=>({l:r.l,a:r.a,b:r.b!=null?r.b:Math.round(r.a*0.75)}));return[{l:'Alpha',a:88,b:65},{l:'Beta',a:94,b:71},{l:'Gamma',a:76,b:80},{l:'Delta',a:52,b:68}];}
+function render(){const rows=getRows();const c=readController();if(c&&c.title)document.getElementById('ttl').textContent=c.title;const max=Math.max(...rows.flatMap(r=>[r.a,r.b]))||1;const el=document.getElementById('chart');el.innerHTML='';rows.forEach(r=>{el.innerHTML+=`<div class="row"><div class="lbl">${r.l}</div><div class="bars"><div class="track"><div class="fill fa" data-w="${Math.round(r.a/max*100)}"></div></div><div class="track"><div class="fill fb" data-w="${Math.round(r.b/max*100)}"></div></div></div><div style="font-size:9px;color:rgba(255,255,255,0.2);width:48px">${r.a}·${r.b}</div></div>`;});setTimeout(()=>document.querySelectorAll('.fill').forEach(f=>f.style.width=f.dataset.w+'%'),40);}
+render();
+</script></body></html>
