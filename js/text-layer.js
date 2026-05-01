@@ -539,9 +539,26 @@ function hexToRgb(hex) {
     } : { r: 0, g: 0, b: 0 };
 }
 
-// Wire up "Add Text" button (called from HTML)
+function deleteText(id) {
+    const el = document.getElementById('text-' + id);
+    if (el) el.remove();
+    const idx = texts.findIndex(t => t.id === id);
+    if (idx !== -1) texts.splice(idx, 1);
+    if (selectedTextId === id) selectedTextId = null;
+    saveState();
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+    if (selectedTextId === null) return;
+    const el = document.getElementById('text-' + selectedTextId);
+    if (!el || el.classList.contains('text-editing')) return;
+    e.preventDefault();
+    deleteText(selectedTextId);
+});
+
 function activateTextMode() {
-    setAddMode('text');
+    setAddMode('text-layer');
 }
 
 // Effect updaters

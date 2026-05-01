@@ -297,7 +297,7 @@ wrap.addEventListener('mousedown', e => {
 });
 wrap.addEventListener('mouseup', e => {
     // Deselect text when clicking on empty canvas
-    if (!e.target.closest('.node,.node-inner,#toolbar,.text-item,#side-panel')) {
+    if (!e.target.closest('.text-item,#toolbar,#side-panel')) {
         if (typeof deselectText === 'function') {
             deselectText();
         }
@@ -313,7 +313,7 @@ wrap.addEventListener('mouseup', e => {
     const pos = clientToScene(e.clientX, e.clientY);
 
     // Handle text placement separately
-    if (addMode === 'text') {
+    if (addMode === 'text-layer') {
         if (typeof createText === 'function') {
             createText(pos.x, pos.y);
         }
