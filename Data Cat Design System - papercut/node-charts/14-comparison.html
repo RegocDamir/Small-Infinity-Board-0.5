@@ -1,0 +1,75 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{font-family:'Roboto',sans-serif;color:rgba(30,30,60,0.9);padding:16px 16px 24px;display:flex;flex-direction:column;
+background:radial-gradient(ellipse at 25% 70%,rgba(57,255,20,0.12) 0%,transparent 50%),
+  radial-gradient(ellipse at 75% 25%,rgba(43,121,224,0.1) 0%,transparent 50%),
+  repeating-linear-gradient(0deg,transparent,transparent 29px,rgba(80,80,130,0.08) 30px),
+  repeating-linear-gradient(90deg,transparent,transparent 29px,rgba(80,80,130,0.08) 30px),#cccce0;}
+h3{font-size:10px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:rgba(40,40,90,0.45);margin-bottom:10px;flex-shrink:0}
+.scene{flex:1;perspective:400px;perspective-origin:50% 50%;position:relative}
+.layer{position:absolute;inset:0;will-change:transform;transition:transform 0.08s ease-out}
+.smoke{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 80%,rgba(200,200,220,0.18) 0%,transparent 70%)}
+.bg-grid{width:100%;height:100%;background-image:linear-gradient(rgba(60,60,120,0.1) 1px,transparent 1px),linear-gradient(90deg,rgba(60,60,120,0.1) 1px,transparent 1px);background-size:20% 25%}
+</style></head><body>
+<h3 id="ttl">Comparison</h3>
+<div class="scene" id="scene">
+  <div class="layer" id="l0" style="transform:translateZ(-30px)"><div class="bg-grid"></div></div>
+  <div class="layer" id="ls1" style="transform:translateZ(-20px)"><div class="smoke"></div></div>
+  <div class="layer" id="l1" style="transform:translateZ(-10px)"><div id="tracks" style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:0 16px"></div></div>
+  <div class="layer" id="ls2" style="transform:translateZ(-4px)"><div class="smoke" style="background:radial-gradient(ellipse at 50% 50%,rgba(180,180,210,0.1) 0%,transparent 60%)"></div></div>
+  <div class="layer" id="l2" style="transform:translateZ(0px)"><div id="fills" style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:0 16px"></div></div>
+  <div class="layer" id="l3" style="transform:translateZ(14px)"><div id="labels" style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:0 16px;pointer-events:none"></div></div>
+</div>
+<script>
+
+const COLORS=['#39FF14','#00B09A','#2B79E0','#E87820','#E84040','#4DC547','#9B59B6'];
+function getMyId(){try{const me=window.frameElement;if(!me)return null;const n=me.closest('[id^="node-"]');return n?n.id.replace('node-',''):null;}catch(e){return null;}}
+function readController(){try{const myId=getMyId();if(myId){const conns=(typeof connections!=='undefined'?connections:[])||(window.parent&&window.parent.connections)||[];for(const c of conns){if(c.from!==myId&&c.to!==myId)continue;const oid=c.from===myId?c.to:c.from;const oNode=window.parent.document.getElementById('node-'+oid);const frame=oNode&&oNode.querySelector('.node-html-frame');const doc=frame&&(frame.contentDocument||(frame.contentWindow&&frame.contentWindow.document));const el=doc&&doc.querySelector('.dc-data');if(el&&el.value){try{return JSON.parse(el.value);}catch(e){}}}}}catch(e){}try{if(window.parent&&window.parent._DC_DATA)return window.parent._DC_DATA;}catch(e){}return null;}
+function showStatus(d){let bar=document.getElementById('_st');if(!bar){bar=document.createElement('div');bar.id='_st';bar.style.cssText='position:fixed;bottom:0;left:0;right:0;font-size:8px;padding:2px 6px;font-family:monospace;opacity:0.55;z-index:999;pointer-events:none';document.body.appendChild(bar);}if(d&&d.rows&&d.rows.length){bar.style.background='rgba(57,255,20,0.1)';bar.style.color='#39FF14';bar.textContent='● '+d.rows.map(r=>r.l+':'+r.a).join(' · ');}else{bar.style.background='rgba(255,255,255,0.04)';bar.style.color='rgba(80,80,130,0.4)';bar.textContent='○ no controller';}}
+let _last=null;
+function poll(){const d=readController();if(JSON.stringify(d)!==JSON.stringify(_last)){_last=d;render();}showStatus(d);}
+setInterval(poll,120);
+try{window.parent.addEventListener('dc:update',()=>{const d=readController();if(d){_last=d;render();}});}catch(e){}
+function getRows(fb){const c=readController();if(c&&c.rows&&c.rows.length)return c.rows.map((r,i)=>({l:r.l,a:r.a,b:r.b||0,col:COLORS[i%COLORS.length]}));return fb.map((d,i)=>({...d,col:COLORS[i%COLORS.length]}));}
+function render(){
+  const rows=getRows([{l:'Alpha',a:88,b:65},{l:'Beta',a:94,b:71},{l:'Gamma',a:76,b:80},{l:'Delta',a:52,b:68},{l:'Epsilon',a:61,b:44}]);
+  const c=readController();if(c&&c.title)document.getElementById('ttl').textContent=c.title;
+  const max=Math.max(...rows.flatMap(r=>[r.a,r.b]),1);
+  const tracks=document.getElementById('tracks');const fills=document.getElementById('fills');const labels=document.getElementById('labels');
+  tracks.innerHTML='';fills.innerHTML='';labels.innerHTML='';
+  rows.forEach(r=>{
+    const pa=Math.round(r.a/max*100),pb=Math.round(r.b/max*100);
+    tracks.innerHTML+=`<div style="display:flex;flex-direction:column;gap:3px">
+      <div style="height:10px;background:rgba(60,60,120,0.08);border-radius:99px"></div>
+      <div style="height:10px;background:rgba(60,60,120,0.08);border-radius:99px"></div>
+    </div>`;
+    fills.innerHTML+=`<div style="display:flex;flex-direction:column;gap:3px">
+      <div style="height:10px"><div style="height:100%;width:0;background:#39FF14;border-radius:99px;box-shadow:0 0 12px #39FF1488;transition:width 0.9s cubic-bezier(.4,0,.2,1)" data-w="${pa}%"></div></div>
+      <div style="height:10px"><div style="height:100%;width:0;background:#2B79E0;border-radius:99px;box-shadow:0 0 12px #2B79E088;transition:width 0.9s cubic-bezier(.4,0,.2,1)" data-w="${pb}%"></div></div>
+    </div>`;
+    labels.innerHTML+=`<div style="display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:rgba(20,20,80,0.55)">${r.l}</span>
+      <span style="font-size:22px;font-weight:800;letter-spacing:-0.02em;color:#39FF14">${r.a} <span style="color:#2B79E0">${r.b}</span></span>
+    </div>`;
+  });
+  setTimeout(()=>document.querySelectorAll('[data-w]').forEach(b=>b.style.width=b.dataset.w),30);
+}
+render();
+
+function setupParallax(defs){
+  let tx=0,ty=0,cx=0,cy=0;
+  document.addEventListener('mousemove',e=>{const r=document.getElementById('scene').getBoundingClientRect();tx=(e.clientX-r.left-r.width/2)/r.width*2;ty=(e.clientY-r.top-r.height/2)/r.height*2;});
+  function loop(){cx+=(tx-cx)*0.08;cy+=(ty-cy)*0.08;defs.forEach(l=>{if(l.el)l.el.style.transform=`translateZ(${l.z}px) translate(${cx*l.rx*18}px,${cy*l.ry*10}px)`;});requestAnimationFrame(loop);}loop();
+}
+setupParallax([
+  {el:document.getElementById('l0'),z:-30,rx:0.6,ry:0.6},
+  {el:document.getElementById('ls1'),z:-20,rx:0.45,ry:0.45},
+  {el:document.getElementById('l1'),z:-10,rx:0.24,ry:0.24},
+  {el:document.getElementById('ls2'),z:-4,rx:0.1,ry:0.1},
+  {el:document.getElementById('l2'),z:0,rx:0,ry:0},
+  {el:document.getElementById('l3'),z:14,rx:-0.2,ry:-0.2},
+]);
+</script></body></html>

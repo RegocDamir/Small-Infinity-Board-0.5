@@ -1,0 +1,80 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{font-family:'Roboto',sans-serif;color:rgba(30,30,60,0.9);padding:16px 16px 24px;display:flex;flex-direction:column;
+background:radial-gradient(ellipse at 25% 70%,rgba(57,255,20,0.12) 0%,transparent 50%),
+  radial-gradient(ellipse at 75% 25%,rgba(43,121,224,0.1) 0%,transparent 50%),
+  repeating-linear-gradient(0deg,transparent,transparent 29px,rgba(80,80,130,0.08) 30px),
+  repeating-linear-gradient(90deg,transparent,transparent 29px,rgba(80,80,130,0.08) 30px),#cccce0;}
+h3{font-size:10px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:rgba(40,40,90,0.45);margin-bottom:10px;flex-shrink:0}
+.scene{flex:1;perspective:400px;perspective-origin:50% 50%;position:relative}
+.layer{position:absolute;inset:0;will-change:transform;transition:transform 0.08s ease-out}
+.smoke{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 80%,rgba(200,200,220,0.18) 0%,transparent 70%)}
+.bg-grid{width:100%;height:100%;background-image:linear-gradient(rgba(60,60,120,0.1) 1px,transparent 1px),linear-gradient(90deg,rgba(60,60,120,0.1) 1px,transparent 1px);background-size:20% 25%}
+</style></head><body>
+<h3 id="ttl">Waffle</h3>
+<div class="scene" id="scene">
+  <div class="layer" id="l0" style="transform:translateZ(-30px)"><div class="bg-grid"></div></div>
+  <div class="layer" id="ls1" style="transform:translateZ(-20px)"><div class="smoke"></div></div>
+  <div class="layer" id="l1" style="transform:translateZ(-10px)"><div id="waffle-shadow" style="position:absolute;inset:0;display:flex;align-items:center;padding:0 16px;gap:20px"></div></div>
+  <div class="layer" id="ls2" style="transform:translateZ(-4px)"><div class="smoke" style="background:radial-gradient(ellipse at 40% 60%,rgba(180,180,210,0.12) 0%,transparent 60%)"></div></div>
+  <div class="layer" id="l2" style="transform:translateZ(0px)"><div id="waffle-main" style="position:absolute;inset:0;display:flex;align-items:center;padding:0 16px;gap:20px"></div></div>
+  <div class="layer" id="l3" style="transform:translateZ(16px)"><div id="legend" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px"></div></div>
+</div>
+<script>
+
+const COLORS=['#39FF14','#00B09A','#2B79E0','#E87820','#E84040','#4DC547','#9B59B6'];
+function getMyId(){try{const me=window.frameElement;if(!me)return null;const n=me.closest('[id^="node-"]');return n?n.id.replace('node-',''):null;}catch(e){return null;}}
+function readController(){try{const myId=getMyId();if(myId){const conns=(typeof connections!=='undefined'?connections:[])||(window.parent&&window.parent.connections)||[];for(const c of conns){if(c.from!==myId&&c.to!==myId)continue;const oid=c.from===myId?c.to:c.from;const oNode=window.parent.document.getElementById('node-'+oid);const frame=oNode&&oNode.querySelector('.node-html-frame');const doc=frame&&(frame.contentDocument||(frame.contentWindow&&frame.contentWindow.document));const el=doc&&doc.querySelector('.dc-data');if(el&&el.value){try{return JSON.parse(el.value);}catch(e){}}}}}catch(e){}try{if(window.parent&&window.parent._DC_DATA)return window.parent._DC_DATA;}catch(e){}return null;}
+function showStatus(d){let bar=document.getElementById('_st');if(!bar){bar=document.createElement('div');bar.id='_st';bar.style.cssText='position:fixed;bottom:0;left:0;right:0;font-size:8px;padding:2px 6px;font-family:monospace;opacity:0.55;z-index:999;pointer-events:none';document.body.appendChild(bar);}if(d&&d.rows&&d.rows.length){bar.style.background='rgba(57,255,20,0.1)';bar.style.color='#39FF14';bar.textContent='● '+d.rows.map(r=>r.l+':'+r.a).join(' · ');}else{bar.style.background='rgba(255,255,255,0.04)';bar.style.color='rgba(80,80,130,0.4)';bar.textContent='○ no controller';}}
+let _last=null;
+function poll(){const d=readController();if(JSON.stringify(d)!==JSON.stringify(_last)){_last=d;render();}showStatus(d);}
+setInterval(poll,120);
+try{window.parent.addEventListener('dc:update',()=>{const d=readController();if(d){_last=d;render();}});}catch(e){}
+function getRows(fb){const c=readController();if(c&&c.rows&&c.rows.length)return c.rows.map((r,i)=>({l:r.l,a:r.a,b:r.b||0,col:COLORS[i%COLORS.length]}));return fb.map((d,i)=>({...d,col:COLORS[i%COLORS.length]}));}
+function makeWaffle(containerId, cells, opacity){
+  const el=document.getElementById(containerId);el.innerHTML='';
+  const grid=document.createElement('div');
+  grid.style.cssText='display:grid;grid-template-columns:repeat(10,1fr);gap:3px;width:180px;flex-shrink:0';
+  cells.slice(0,100).forEach((col,i)=>{
+    const d=document.createElement('div');
+    d.style.cssText=`aspect-ratio:1;border-radius:2px;background:${col};opacity:0;transition:opacity 0.08s ease ${i*0.006}s;box-shadow:0 0 6px ${col}66`;
+    grid.appendChild(d);
+    setTimeout(()=>d.style.opacity=String(opacity),40);
+  });
+  el.appendChild(grid);
+}
+function render(){
+  const rows=getRows([{l:'Alpha',a:34},{l:'Beta',a:25},{l:'Gamma',a:18},{l:'Delta',a:12},{l:'Other',a:11}]);
+  const c=readController();if(c&&c.title)document.getElementById('ttl').textContent=c.title;
+  const total=rows.reduce((s,r)=>s+r.a,0)||1;
+  const cells=[];let tot=0;
+  rows.forEach(r=>{const n=Math.min(Math.round(r.a/total*100),100-tot);tot+=n;for(let i=0;i<n;i++)cells.push(r.col);});
+  while(cells.length<100)cells.push('rgba(60,60,120,0.08)');
+  makeWaffle('waffle-shadow',cells.map(()=>'rgba(0,0,0,0.08)'),0.9);
+  makeWaffle('waffle-main',cells,1);
+  const leg=document.getElementById('legend');leg.innerHTML='';
+  rows.forEach(r=>leg.innerHTML+=`<div style="display:flex;align-items:center;gap:8px">
+    <div style="width:10px;height:10px;border-radius:2px;background:${r.col};box-shadow:0 0 6px ${r.col}88;flex-shrink:0"></div>
+    <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:rgba(20,20,80,0.55)">${r.l}</span>
+    <span style="font-size:24px;font-weight:800;color:${r.col};letter-spacing:-0.02em">${Math.round(r.a/total*100)}%</span>
+  </div>`);
+}
+render();
+
+function setupParallax(defs){
+  let tx=0,ty=0,cx=0,cy=0;
+  document.addEventListener('mousemove',e=>{const r=document.getElementById('scene').getBoundingClientRect();tx=(e.clientX-r.left-r.width/2)/r.width*2;ty=(e.clientY-r.top-r.height/2)/r.height*2;});
+  function loop(){cx+=(tx-cx)*0.08;cy+=(ty-cy)*0.08;defs.forEach(l=>{if(l.el)l.el.style.transform=`translateZ(${l.z}px) translate(${cx*l.rx*18}px,${cy*l.ry*10}px)`;});requestAnimationFrame(loop);}loop();
+}
+setupParallax([
+  {el:document.getElementById('l0'),z:-30,rx:0.6,ry:0.6},
+  {el:document.getElementById('ls1'),z:-20,rx:0.45,ry:0.45},
+  {el:document.getElementById('l1'),z:-10,rx:0.24,ry:0.24},
+  {el:document.getElementById('ls2'),z:-4,rx:0.1,ry:0.1},
+  {el:document.getElementById('l2'),z:0,rx:0,ry:0},
+  {el:document.getElementById('l3'),z:16,rx:-0.22,ry:-0.22},
+]);
+</script></body></html>

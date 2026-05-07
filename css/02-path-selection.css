@@ -1,0 +1,153 @@
+        /* ── GROUP CONTAINER ── */
+        .node-is-group {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1.5px dashed var(--bar-border);
+            box-shadow: none;
+            pointer-events: auto;
+            cursor: grab;
+            z-index: 1;
+            padding: 0 14px 14px 14px;
+        }
+
+        .node-is-group:active {
+            cursor: grabbing;
+        }
+
+        .node-is-group .node-body {
+            background: #f3ebe1;
+            border-radius: 8px;
+            margin: 0 4px 4px 4px;
+            padding: 4px;
+            pointer-events: none;
+        }
+
+        .node-is-group>.node-inner {
+            pointer-events: none;
+        }
+
+        .node-is-group>.node-inner>.node-header {
+            pointer-events: auto;
+            cursor: grab;
+            /* Allow grabbing the group header to move it */
+        }
+
+        body.light .node-is-group {
+            background: #fdfdfd;
+            border: 2px solid #000;
+        }
+
+        body.light .node-is-group .node-body {
+            background: #f3ebe1;
+            border: 2px solid #ff751f;
+            border-radius: 8px;
+            margin: 0 4px 4px 4px;
+            padding: 4px;
+        }
+
+        body.light .node-is-group .node-title {
+            color: #000;
+            font-weight: 700;
+        }
+
+        body.light .node-is-group .node-title::placeholder {
+            color: rgba(0, 0, 0, 0.5);
+        }
+
+        body.light .node-is-group .node-act-btn {
+            color: #000;
+        }
+
+        body.light .node-act-btn {
+            color: #ff751f;
+        }
+
+        .node-container-area {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        svg#connections {
+            position: absolute;
+            top: -10000px;
+            left: -10000px;
+            width: 20000px;
+            height: 20000px;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .camera-path-line,
+        .camera-path-line-glow {
+            fill: none;
+            stroke: #ff751f;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .camera-path-line-glow {
+            stroke-width: 18;
+            opacity: 0.3;
+            filter: drop-shadow(0 0 10px rgba(255, 117, 31, 0.32));
+        }
+
+        .camera-path-line {
+            stroke-width: 8;
+            opacity: 0.78;
+            filter: drop-shadow(0 0 10px rgba(255, 117, 31, 0.32));
+        }
+
+        .camera-path-point {
+            fill: #00d4ff;
+            stroke: #111;
+            stroke-width: 2;
+            opacity: 0.95;
+            cursor: grab;
+            pointer-events: all;
+        }
+
+        .camera-path-point.is-dragging {
+            cursor: grabbing;
+        }
+
+        .camera-path-ramp {
+            fill: none;
+            stroke-width: 18;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            filter: drop-shadow(0 0 10px rgba(255, 77, 0, 0.35));
+            cursor: pointer;
+            pointer-events: stroke;
+        }
+
+        .camera-path-ramp.is-selected {
+            filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.42));
+        }
+
+        .camera-path-ramp-handle {
+            fill: #fff;
+            stroke: rgba(20, 20, 20, 0.8);
+            stroke-width: 2;
+            cursor: grab;
+            pointer-events: all;
+            filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.45));
+        }
+
+        .camera-path-ramp-handle.is-dragging {
+            cursor: grabbing;
+        }
+
+        /* ── SELECTION BOX ── */
+        #selection-box {
+            position: fixed;
+            border: 1.5px dashed rgba(0, 110, 255, 0.6);
+            background: rgba(0, 110, 255, 0.05);
+            pointer-events: none;
+            z-index: 2000;
+            display: none;
+        }
+
+        body.light #selection-box {
+            border-color: rgba(0, 110, 255, 0.6);
+            background: rgba(0, 110, 255, 0.05);
+        }

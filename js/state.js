@@ -1,13 +1,6 @@
 // ═══════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════
-// ── Last session: 2026-03-12  ·  Claude Sonnet ───────────────────────
-// Completed: stack ear z-index lock (CSS + resize handler), card labels
-// now show title/"Untitled", animated single-eject (spring to centre →
-// fills viewport height → glides to varied resting spots, random scale
-// & pace, ~7% reversal), custom magnet SVG in empty-state hints.
-// Next: toolbar button logic (K-FRAME, ZOOM, FLIP, SPAWN, + , etc.)
-// ─────────────────────────────────────────────────────────────────────
 
 let nodes = [];
 let connections = [];
@@ -22,6 +15,18 @@ let focusedStackId = null;
 let kframeActive = false, kframeSnapshot = null;
 let clickReady = false;
 let ctxTarget = null;
+let cameraPath = { points: [], speed: 120, turnWithPath: false, ramps: [], visible: true };
+
+function normalizeCameraPath(path) {
+    const base = path || {};
+    return {
+        points: Array.isArray(base.points) ? base.points : [],
+        speed: Number.isFinite(parseFloat(base.speed)) ? parseFloat(base.speed) : 120,
+        turnWithPath: !!base.turnWithPath,
+        ramps: Array.isArray(base.ramps) ? base.ramps : [],
+        visible: base.visible !== false
+    };
+}
 
 // ---------- DB SETUP ----------
 const DB_NAME = 'InfiniteCanvasDB';
@@ -33,7 +38,11 @@ req.onupgradeneeded = e => {
 };
 req.onsuccess = e => {
     db = e.target.result;
-    loadState();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadState, { once: true });
+    } else {
+        loadState();
+    }
 };
 // ═══════════════════════════════════════════════
 //  UNDO / REDO
@@ -152,6 +161,9 @@ function saveState(skipHistory = false) {
         } else if (n.type === 'malik') {
             const chat = el.querySelector('.malik-chat');
             if (chat) n.chatHTML = chat.innerHTML;
+        } else if (n.type === 'youtube') {
+            const input = el.querySelector('.node-yt-input');
+            if (input) n.ytUrl = input.value;
         } else if (n.type === 'html') {
             const code = el.querySelector('.node-html-code');
             if (code) n.code = code.value;
@@ -176,7 +188,6 @@ function saveState(skipHistory = false) {
         // Effects
         if (el.dataset.shadow) t.shadow = JSON.parse(el.dataset.shadow);
         if (el.dataset.drift) t.drift = JSON.parse(el.dataset.drift);
-        if (el.dataset.randomWriteOn) t.randomWriteOn = el.dataset.randomWriteOn === 'true';
         if (el.dataset.slideUp) t.slideUp = el.dataset.slideUp === 'true';
     });
 
@@ -191,6 +202,7 @@ function saveState(skipHistory = false) {
         connections: connections.map(c => ({ id: c.id, from: c.from, to: c.to })),
         texts,
         pan, zoom, nid, cid, tid,
+        cameraPath,
         tbLogo: tbLogoData
     };
 
@@ -206,6 +218,7 @@ function restoreState(state, preservedIds) {
     texts = state.texts || [];
     pan = state.pan || { x: 0, y: 0 };
     zoom = state.zoom || 1;
+    cameraPath = normalizeCameraPath(state.cameraPath);
     nid = state.nid || 0;
     cid = state.cid || 0;
     tid = state.tid || 0;
@@ -219,6 +232,10 @@ function restoreState(state, preservedIds) {
             el.classList.add('has-logo');
         });
     }
+
+    nodeSeqCounter = 0;
+    _nodeNums.clear();
+    nodes.forEach(n => _nodeNums.set(n.id, ++nodeSeqCounter));
 
     nodes.forEach(data => {
         if (preserved.has(data.id)) {
@@ -298,6 +315,10 @@ function restoreState(state, preservedIds) {
                 toggleHtmlPlay(data.id);
             }
         }
+        if (data.type === 'youtube' && data.ytUrl) {
+            const input = el.querySelector('.node-yt-input');
+            if (input) { input.value = data.ytUrl; applyYtUrl(data.id, data.ytUrl); }
+        }
     });
 
     // Restore texts
@@ -316,6 +337,7 @@ function restoreState(state, preservedIds) {
     applyTransform();
     updateDotGrid();
     setZoomHud(zoom);
+    if (typeof renderCameraPath === 'function') renderCameraPath();
 }
 
 function loadState() {
@@ -343,6 +365,8 @@ function newBoard() {
     clearAllNodes();
     nodes = [];
     connections = [];
+    texts = [];
+    cameraPath = { points: [], speed: 120, turnWithPath: false, ramps: [], visible: true };
     nid = 0; cid = 0;
     pan = { x: 0, y: 0 }; zoom = 1;
 
@@ -355,6 +379,7 @@ function newBoard() {
     }
     applyTransform();
     updateDotGrid();
+    if (typeof renderCameraPath === 'function') renderCameraPath();
 
     // Add a single welcoming text node or just leave empty
     createNode('text', window.innerWidth / 2 - 100, window.innerHeight / 2 - 75);

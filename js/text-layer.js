@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 let selectedTextId = null;
+const textDriftRunners = new Map();
+let textDriftRaf = null;
 
 function createText(x, y, z = 0) {
     const id = tid++;
@@ -14,9 +16,8 @@ function createText(x, y, z = 0) {
         fontFamily: 'system-ui',
         color: '#000000',
         rotation: 0,
-        shadow: { enabled: false, angle: 45, distance: 4, blur: 8, opacity: 0.3, color: '#000000' },
-        drift: { enabled: false, direction: 0, speed: 1 },
-        randomWriteOn: { enabled: false, duration: 1 },
+        shadow: { enabled: false, angle: 45, distance: 8, blur: 14, opacity: 0.85, color: '#00d4ff' },
+        drift: { enabled: false, direction: 'ltr', speed: 20 },
         slideUp: { enabled: false, duration: 0.5 }
     };
     texts.push(data);
@@ -35,7 +36,7 @@ function createText(x, y, z = 0) {
 }
 
 function mountText(data) {
-    if (!data || !data.id) return;
+    if (!data || data.id == null) return;
 
     const scene = document.getElementById('scene');
     if (!scene) return;
@@ -52,6 +53,11 @@ function mountText(data) {
         input.type = 'text';
         input.className = 'text-input';
         input.addEventListener('input', () => {
+            data.content = input.value;
+            if (selectedTextId === data.id) {
+                const contentInput = document.getElementById('tc-content');
+                if (contentInput && contentInput.value !== input.value) contentInput.value = input.value;
+            }
             saveState();
         });
         el.appendChild(input);
@@ -127,9 +133,7 @@ function mountText(data) {
     }
     if (data.drift && data.drift.enabled) {
         el.dataset.drift = JSON.stringify(data.drift);
-    }
-    if (data.randomWriteOn && data.randomWriteOn.enabled) {
-        el.dataset.randomWriteOn = 'true';
+        startTextDrift(data.id);
     }
     if (data.slideUp && data.slideUp.enabled) {
         el.dataset.slideUp = 'true';
@@ -166,6 +170,7 @@ function selectText(id, options = {}) {
     }
 
     selectedTextId = id;
+    window.sidePanelSelectedNodeId = null;
     const el = document.getElementById('text-' + id);
     if (el) {
         el.classList.add('text-selected');
@@ -276,33 +281,78 @@ function startResizeDrag(id, e, corner) {
 
     const input = el.querySelector('.text-input');
     const startFontSize = data.fontSize || 32;
-    const startCx = e.clientX;
-    const startCy = e.clientY;
-    const signX = (corner === 'nw' || corner === 'sw') ? -1 : 1;
-    const signY = (corner === 'nw' || corner === 'ne') ? -1 : 1;
     const captureEl = document.documentElement;
     const pid = e.pointerId;
+    const startW = el.offsetWidth;
+    const startH = el.offsetHeight;
+    const rotation = ((data.rotation || 0) * Math.PI) / 180;
+    const opposite = { nw: 'se', ne: 'sw', se: 'nw', sw: 'ne' }[corner] || 'nw';
+    const fixedLocal = textHandleLocal(opposite, startW, startH);
+    const draggedLocal = textHandleLocal(corner, startW, startH);
+    const fixedWorld = textLocalToScene(data.x, data.y, startW, startH, fixedLocal, rotation);
+    const draggedWorld = textLocalToScene(data.x, data.y, startW, startH, draggedLocal, rotation);
+    const pointerStart = clientToScene(e.clientX, e.clientY);
+    const pointerOffset = {
+        x: pointerStart.x - draggedWorld.x,
+        y: pointerStart.y - draggedWorld.y
+    };
+    const startVec = {
+        x: draggedLocal.x - fixedLocal.x,
+        y: draggedLocal.y - fixedLocal.y
+    };
+    const startLenSq = Math.max(1, startVec.x * startVec.x + startVec.y * startVec.y);
 
-    const startW = el.offsetWidth / zoom;
-    const startH = el.offsetHeight / zoom;
-    const anchorX = data.x + (signX < 0 ? startW : 0);
-    const anchorY = data.y + (signY < 0 ? startH : 0);
     selectText(id, { editing: false });
     document.body.classList.add('is-dragging');
     try { captureEl.setPointerCapture(pid); } catch (_) {}
 
     const onPointerMove = (evt) => {
-        const dx = (evt.clientX - startCx) / zoom;
-        const dy = (evt.clientY - startCy) / zoom;
-        const delta = signX * dx + signY * dy;
-        data.fontSize = Math.max(8, startFontSize + delta * 0.4);
+        const pointer = clientToScene(evt.clientX, evt.clientY);
+        const targetWorld = {
+            x: pointer.x - pointerOffset.x,
+            y: pointer.y - pointerOffset.y
+        };
+        const targetVec = textSceneVectorToLocal({
+            x: targetWorld.x - fixedWorld.x,
+            y: targetWorld.y - fixedWorld.y
+        }, rotation);
+        const scale = Math.max(8 / startFontSize, (targetVec.x * startVec.x + targetVec.y * startVec.y) / startLenSq);
+        let nextFontSize = Math.max(8, startFontSize * scale);
+        for (let i = 0; i < 2; i++) {
+            data.fontSize = nextFontSize;
+            el.dataset.fontSize = data.fontSize;
+            if (input) input.style.fontSize = data.fontSize + 'px';
+            const measuredW = el.offsetWidth;
+            const measuredH = el.offsetHeight;
+            const measuredFixed = textHandleLocal(opposite, measuredW, measuredH);
+            const measuredDragged = textHandleLocal(corner, measuredW, measuredH);
+            const measuredVec = {
+                x: measuredDragged.x - measuredFixed.x,
+                y: measuredDragged.y - measuredFixed.y
+            };
+            const measuredLenSq = Math.max(1, measuredVec.x * measuredVec.x + measuredVec.y * measuredVec.y);
+            const correction = Math.max(8 / nextFontSize, (targetVec.x * measuredVec.x + targetVec.y * measuredVec.y) / measuredLenSq);
+            const correctedFontSize = Math.max(8, nextFontSize * correction);
+            if (Math.abs(correctedFontSize - nextFontSize) < 0.05) break;
+            nextFontSize = correctedFontSize;
+        }
+        data.fontSize = nextFontSize;
+        el.dataset.fontSize = data.fontSize;
         if (input) input.style.fontSize = data.fontSize + 'px';
 
-        const r = data.fontSize / startFontSize;
-        data.x = signX < 0 ? anchorX - startW * r : anchorX;
-        data.y = signY < 0 ? anchorY - startH * r : anchorY;
+        const nextW = el.offsetWidth;
+        const nextH = el.offsetHeight;
+        const nextFixedLocal = textHandleLocal(opposite, nextW, nextH);
+        const nextCenter = { x: nextW / 2, y: nextH / 2 };
+        const fixedFromCenter = textRotateVector({
+            x: nextFixedLocal.x - nextCenter.x,
+            y: nextFixedLocal.y - nextCenter.y
+        }, rotation);
+        data.x = fixedWorld.x - nextCenter.x - fixedFromCenter.x;
+        data.y = fixedWorld.y - nextCenter.y - fixedFromCenter.y;
         el.style.left = data.x + 'px';
         el.style.top  = data.y + 'px';
+        updateTextControlsFromSelection();
     };
 
     const onPointerUp = () => {
@@ -317,6 +367,36 @@ function startResizeDrag(id, e, corner) {
     captureEl.addEventListener('pointermove', onPointerMove);
     captureEl.addEventListener('pointerup', onPointerUp);
     captureEl.addEventListener('pointercancel', onPointerUp);
+}
+
+function textHandleLocal(corner, w, h) {
+    const o = 15;
+    if (corner === 'nw') return { x: -o, y: -o };
+    if (corner === 'ne') return { x: w + o, y: -o };
+    if (corner === 'sw') return { x: -o, y: h + o };
+    return { x: w + o, y: h + o };
+}
+
+function textRotateVector(v, rotation) {
+    const c = Math.cos(rotation);
+    const s = Math.sin(rotation);
+    return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
+}
+
+function textSceneVectorToLocal(v, rotation) {
+    return textRotateVector(v, -rotation);
+}
+
+function textLocalToScene(left, top, w, h, local, rotation) {
+    const center = { x: w / 2, y: h / 2 };
+    const rotated = textRotateVector({
+        x: local.x - center.x,
+        y: local.y - center.y
+    }, rotation);
+    return {
+        x: left + center.x + rotated.x,
+        y: top + center.y + rotated.y
+    };
 }
 
 function startRotateDrag(id, e) {
@@ -362,23 +442,72 @@ function startRotateDrag(id, e) {
 
 function updateTextControlsFromSelection() {
     const text = getSelectedText();
+    const contentInput = document.getElementById('tc-content');
     const fontSelect = document.getElementById('tc-font');
     const colorPicker = document.getElementById('tc-color');
     const sizeSlider = document.getElementById('tc-size');
     const zSlider = document.getElementById('tc-z');
+    const sizeDisplay = document.getElementById('tc-size-display');
+    const zDisplay = document.getElementById('tc-z-display');
+    const shadowCheck = document.getElementById('tc-shadow-check');
+    const shadowColor = document.getElementById('tc-shadow-color');
+    const shadowAngle = document.getElementById('tc-shadow-angle');
+    const shadowDistance = document.getElementById('tc-shadow-distance');
+    const shadowBlur = document.getElementById('tc-shadow-blur');
+    const shadowOpacity = document.getElementById('tc-shadow-opacity');
+    const driftCheck = document.getElementById('tc-drift-check');
+    const driftSpeed = document.getElementById('tc-drift-speed');
+    const shadowControls = document.getElementById('tc-shadow-controls');
+    const driftControls = document.getElementById('tc-drift-controls');
 
     if (!text) {
+        if (contentInput) contentInput.value = '';
         if (fontSelect) fontSelect.value = 'system-ui';
         if (colorPicker) colorPicker.value = '#000000';
-        if (sizeSlider) sizeSlider.value = '32';
+        if (sizeSlider) { sizeSlider.value = '32'; syncSliderFill(sizeSlider); }
+        if (sizeDisplay) sizeDisplay.textContent = '32';
         if (zSlider) zSlider.value = '0';
+        if (zDisplay) zDisplay.textContent = '0';
+        if (shadowCheck) shadowCheck.checked = false;
+        if (shadowColor) shadowColor.value = '#00d4ff';
+        if (shadowAngle) shadowAngle.value = '45';
+        if (shadowDistance) shadowDistance.value = '8';
+        if (shadowBlur) shadowBlur.value = '14';
+        if (shadowOpacity) shadowOpacity.value = '0.85';
+        if (driftCheck) driftCheck.checked = false;
+        setDriftDirectionButtons('ltr');
+        if (driftSpeed) driftSpeed.value = '20';
+        if (shadowControls) shadowControls.classList.remove('tc-open');
+        if (driftControls) driftControls.classList.remove('tc-open');
         return;
     }
 
+    if (contentInput) contentInput.value = text.content || '';
     if (fontSelect) fontSelect.value = text.fontFamily || 'system-ui';
     if (colorPicker) colorPicker.value = text.color || '#000000';
-    if (sizeSlider) sizeSlider.value = text.fontSize || 32;
+    if (sizeSlider) { sizeSlider.value = text.fontSize || 32; syncSliderFill(sizeSlider); }
+    if (sizeDisplay) sizeDisplay.textContent = Math.round(text.fontSize || 32);
     if (zSlider) zSlider.value = text.z || 0;
+    if (zDisplay) zDisplay.textContent = text.z || 0;
+    if (shadowCheck) shadowCheck.checked = !!text.shadow?.enabled;
+    if (shadowColor) shadowColor.value = text.shadow?.color || '#00d4ff';
+    if (shadowAngle) { shadowAngle.value = text.shadow?.angle ?? 45; syncSliderFill(shadowAngle); }
+    if (shadowDistance) { shadowDistance.value = text.shadow?.distance ?? 8; syncSliderFill(shadowDistance); }
+    if (shadowBlur) { shadowBlur.value = text.shadow?.blur ?? 14; syncSliderFill(shadowBlur); }
+    if (shadowOpacity) { shadowOpacity.value = text.shadow?.opacity ?? 0.85; syncSliderFill(shadowOpacity); }
+    if (driftCheck) driftCheck.checked = !!text.drift?.enabled;
+    setDriftDirectionButtons(text.drift?.direction || 'ltr');
+    if (driftSpeed) driftSpeed.value = text.drift?.speed ?? 20;
+}
+
+function applyTextContent(value) {
+    const text = getSelectedText();
+    if (!text) return;
+    text.content = value;
+    const el = document.getElementById('text-' + text.id);
+    const input = el?.querySelector('.text-input');
+    if (input) input.value = value;
+    saveState();
 }
 
 function applyTextProperty(prop, value) {
@@ -406,29 +535,63 @@ function applyTextProperty(prop, value) {
             el.dataset.fontSize = text.fontSize;
             const inp3 = el.querySelector('.text-input');
             if (inp3) inp3.style.fontSize = text.fontSize + 'px';
+            const sizeDisplay = document.getElementById('tc-size-display');
+            if (sizeDisplay) sizeDisplay.textContent = Math.round(text.fontSize);
             break;
         case 'z':
             text.z = parseFloat(value);
             el.dataset.z = text.z;
             el.style.zIndex = text.z;
             el.style.transform = `rotateZ(${text.rotation || 0}deg) translateZ(${text.z * 100}px)`;
+            const zDisplay = document.getElementById('tc-z-display');
+            if (zDisplay) zDisplay.textContent = text.z;
             break;
     }
 
     saveState();
 }
 
+function toggleShadowPanel() {
+    const controls = document.getElementById('tc-shadow-controls');
+    if (!controls) return;
+    const opening = !controls.classList.contains('tc-open');
+    controls.classList.toggle('tc-open');
+    if (opening) {
+        ['tc-shadow-angle', 'tc-shadow-distance', 'tc-shadow-blur', 'tc-shadow-opacity'].forEach(id => {
+            syncSliderFill(document.getElementById(id));
+        });
+    }
+}
+
+
+function toggleDriftPanel() {
+    const controls = document.getElementById('tc-drift-controls');
+    if (!controls) return;
+    const opening = !controls.classList.contains('tc-open');
+    controls.classList.toggle('tc-open');
+    if (opening) syncSliderFill(document.getElementById('tc-drift-speed'));
+}
+
+document.addEventListener('click', function(e) {
+    document.querySelectorAll('.tc-effect-controls').forEach(panel => {
+        if (!panel.classList.contains('tc-open')) return;
+        const group = panel.closest('.tc-effect-group');
+        if (group && !group.contains(e.target)) panel.classList.remove('tc-open');
+    });
+});
+
 function toggleEffectProp(prop, subroutine) {
     const text = getSelectedText();
     if (!text) return;
 
     if (prop === 'shadow') {
-        text.shadow = text.shadow || {};
-        text.shadow.enabled = !text.shadow.enabled;
+        const wasEnabled = !!text.shadow?.enabled;
+        text.shadow = wasEnabled
+            ? { angle: 45, distance: 8, blur: 14, opacity: 0.85, color: '#00d4ff', ...text.shadow }
+            : { angle: 45, distance: 8, blur: 14, opacity: 0.85, color: '#00d4ff', enabled: false };
+        text.shadow.enabled = !wasEnabled;
         const el = document.getElementById('text-' + text.id);
-        const controls = document.getElementById('tc-shadow-controls');
         const checkbox = document.getElementById('tc-shadow-check');
-        if (controls) controls.style.display = text.shadow.enabled ? 'flex' : 'none';
         if (checkbox) checkbox.checked = text.shadow.enabled;
         if (text.shadow.enabled) {
             el.dataset.shadow = JSON.stringify(text.shadow);
@@ -436,43 +599,24 @@ function toggleEffectProp(prop, subroutine) {
         } else {
             delete el.dataset.shadow;
             el.style.textShadow = '';
+            const input = el.querySelector('.text-input');
+            if (input) {
+                input.style.textShadow = '';
+                input.style.filter = '';
+            }
         }
     } else if (prop === 'drift') {
-        text.drift = text.drift || {};
+        text.drift = { direction: 'ltr', speed: 20, ...text.drift };
         text.drift.enabled = !text.drift.enabled;
         const el = document.getElementById('text-' + text.id);
-        const controls = document.getElementById('tc-drift-controls');
         const checkbox = document.getElementById('tc-drift-check');
-        if (controls) controls.style.display = text.drift.enabled ? 'flex' : 'none';
         if (checkbox) checkbox.checked = text.drift.enabled;
         if (text.drift.enabled) {
             el.dataset.drift = JSON.stringify(text.drift);
-            applyDriftEffect(el, text.drift);
+            startTextDrift(text.id);
         } else {
             delete el.dataset.drift;
-            el.style.animation = '';
-        }
-    } else if (prop === 'randomWriteOn') {
-        text.randomWriteOn = text.randomWriteOn || {};
-        text.randomWriteOn.enabled = !text.randomWriteOn.enabled;
-        const el = document.getElementById('text-' + text.id);
-        const controls = document.getElementById('tc-random-controls');
-        const checkbox = document.getElementById('tc-random-write-check');
-        if (controls) controls.style.display = text.randomWriteOn.enabled ? 'flex' : 'none';
-        if (checkbox) checkbox.checked = text.randomWriteOn.enabled;
-        el.dataset.randomWriteOn = text.randomWriteOn.enabled ? 'true' : 'false';
-    } else if (prop === 'slideUp') {
-        text.slideUp = text.slideUp || {};
-        text.slideUp.enabled = !text.slideUp.enabled;
-        const el = document.getElementById('text-' + text.id);
-        const checkbox = document.getElementById('tc-slide-up-check');
-        if (checkbox) checkbox.checked = text.slideUp.enabled;
-        if (text.slideUp.enabled) {
-            el.dataset.slideUp = 'true';
-            el.classList.add('text-slide-up');
-        } else {
-            el.dataset.slideUp = 'false';
-            el.classList.remove('text-slide-up');
+            stopTextDrift(text.id);
         }
     }
 
@@ -482,13 +626,18 @@ function toggleEffectProp(prop, subroutine) {
 function applyShadowEffect(el, shadowData) {
     if (!shadowData || !shadowData.enabled) {
         el.style.textShadow = '';
+        const input = el.querySelector('.text-input');
+        if (input) {
+            input.style.textShadow = '';
+            input.style.filter = '';
+        }
         return;
     }
-    const angle = shadowData.angle || 45;
-    const distance = shadowData.distance || 4;
-    const blur = shadowData.blur || 8;
-    const opacity = shadowData.opacity || 0.3;
-    const color = shadowData.color || '#000000';
+    const angle = shadowData.angle ?? 45;
+    const distance = shadowData.distance ?? 8;
+    const blur = shadowData.blur ?? 14;
+    const opacity = shadowData.opacity ?? 0.85;
+    const color = shadowData.color || '#00d4ff';
 
     const rad = angle * (Math.PI / 180);
     const offsetX = Math.cos(rad) * distance;
@@ -496,38 +645,72 @@ function applyShadowEffect(el, shadowData) {
     const rgb = hexToRgb(color);
     const shadowColor = `rgba(${rgb.r},${rgb.g},${rgb.b},${opacity})`;
 
-    el.style.textShadow = `${offsetX}px ${offsetY}px ${blur}px ${shadowColor}`;
+    const value = `${offsetX}px ${offsetY}px ${blur}px ${shadowColor}`;
+    el.style.textShadow = '';
+    const input = el.querySelector('.text-input');
+    if (input) {
+        input.style.textShadow = '';
+        input.style.filter = `drop-shadow(${value})`;
+    }
 }
 
-function applyDriftEffect(el, driftData) {
-    if (!driftData || !driftData.enabled) {
-        el.style.animation = '';
-        return;
+function startTextDrift(id) {
+    const text = texts.find(t => t.id === id);
+    const el = document.getElementById('text-' + id);
+    if (!text || !el || !text.drift?.enabled) return;
+    textDriftRunners.set(id, { last: performance.now() });
+    el.dataset.drift = JSON.stringify(text.drift);
+    if (!textDriftRaf) textDriftRaf = requestAnimationFrame(tickTextDrift);
+}
+
+function stopTextDrift(id) {
+    textDriftRunners.delete(id);
+    if (textDriftRunners.size === 0 && textDriftRaf) {
+        cancelAnimationFrame(textDriftRaf);
+        textDriftRaf = null;
     }
-    const direction = driftData.direction || 0;
-    const speed = driftData.speed || 1;
-    const duration = (10 / speed);
+}
 
-    const rad = direction * (Math.PI / 180);
-    const endX = Math.cos(rad) * 200;
-    const endY = Math.sin(rad) * 200;
-
-    const keyframes = `
-        @keyframes drift-${el.id} {
-            0% { transform: translate(0, 0); opacity: 1; }
-            100% { transform: translate(${endX}px, ${endY}px); opacity: 0; }
+function tickTextDrift(now) {
+    textDriftRunners.forEach((runner, id) => {
+        const text = texts.find(t => t.id === id);
+        const el = document.getElementById('text-' + id);
+        if (!text || !el || !text.drift?.enabled) {
+            stopTextDrift(id);
+            return;
         }
-    `;
+        const dt = Math.min(0.05, (now - runner.last) / 1000);
+        runner.last = now;
+        const velocity = getTextDriftVelocity(text.drift);
+        text.x += velocity.x * dt;
+        text.y += velocity.y * dt;
+        wrapTextDrift(text, el);
+        el.style.left = text.x + 'px';
+        el.style.top = text.y + 'px';
+    });
+    textDriftRaf = textDriftRunners.size ? requestAnimationFrame(tickTextDrift) : null;
+}
 
-    let styleSheet = document.getElementById('drift-styles');
-    if (!styleSheet) {
-        styleSheet = document.createElement('style');
-        styleSheet.id = 'drift-styles';
-        document.head.appendChild(styleSheet);
-    }
-    styleSheet.textContent += keyframes;
+function getTextDriftVelocity(drift) {
+    const speed = Number(drift.speed || 20);
+    const pxPerSecond = (window.innerWidth / 5) * (speed / 20) / Math.max(0.1, zoom / 0.85);
+    if (drift.direction === 'rtl') return { x: -pxPerSecond, y: 0 };
+    if (drift.direction === 'ttb') return { x: 0, y: pxPerSecond };
+    if (drift.direction === 'btt') return { x: 0, y: -pxPerSecond };
+    return { x: pxPerSecond, y: 0 };
+}
 
-    el.style.animation = `drift-${el.id} ${duration}s ease-out forwards`;
+function wrapTextDrift(text, el) {
+    const w = el.offsetWidth || 1;
+    const h = el.offsetHeight || 1;
+    const left = (0 - pan.x) / zoom;
+    const top = (0 - pan.y) / zoom;
+    const right = (window.innerWidth - pan.x) / zoom;
+    const bottom = (window.innerHeight - pan.y) / zoom;
+    if (text.drift.direction === 'ltr' && text.x > right) text.x = left - w;
+    if (text.drift.direction === 'rtl' && text.x + w < left) text.x = right;
+    if (text.drift.direction === 'ttb' && text.y > bottom) text.y = top - h;
+    if (text.drift.direction === 'btt' && text.y + h < top) text.y = bottom;
 }
 
 function hexToRgb(hex) {
@@ -548,8 +731,18 @@ function deleteText(id) {
     saveState();
 }
 
+document.addEventListener('pointerdown', e => {
+    ['tc-shadow-controls', 'tc-drift-controls'].forEach(id => {
+        const controls = document.getElementById(id);
+        if (!controls || !controls.classList.contains('tc-open')) return;
+        const group = controls.closest('.tc-effect-group');
+        if (group && !group.contains(e.target)) controls.classList.remove('tc-open');
+    });
+}, true);
+
 document.addEventListener('keydown', e => {
     if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+    if (e.target.matches('input,textarea,select')) return;
     if (selectedTextId === null) return;
     const el = document.getElementById('text-' + selectedTextId);
     if (!el || el.classList.contains('text-editing')) return;
@@ -559,6 +752,11 @@ document.addEventListener('keydown', e => {
 
 function activateTextMode() {
     setAddMode('text-layer');
+    clickReady = true;
+}
+
+function toggleSelectedTextDrift() {
+    toggleEffectProp('drift');
 }
 
 // Effect updaters
@@ -568,7 +766,23 @@ function updateShadowAngle(value) {
     text.shadow = text.shadow || {};
     text.shadow.angle = parseFloat(value);
     const el = document.getElementById('text-' + text.id);
-    if (el) applyShadowEffect(el, text.shadow);
+    if (el) {
+        el.dataset.shadow = JSON.stringify(text.shadow);
+        applyShadowEffect(el, text.shadow);
+    }
+    saveState();
+}
+
+function updateShadowColor(value) {
+    const text = getSelectedText();
+    if (!text) return;
+    text.shadow = text.shadow || {};
+    text.shadow.color = value;
+    const el = document.getElementById('text-' + text.id);
+    if (el) {
+        el.dataset.shadow = JSON.stringify(text.shadow);
+        applyShadowEffect(el, text.shadow);
+    }
     saveState();
 }
 
@@ -578,7 +792,10 @@ function updateShadowDistance(value) {
     text.shadow = text.shadow || {};
     text.shadow.distance = parseFloat(value);
     const el = document.getElementById('text-' + text.id);
-    if (el) applyShadowEffect(el, text.shadow);
+    if (el) {
+        el.dataset.shadow = JSON.stringify(text.shadow);
+        applyShadowEffect(el, text.shadow);
+    }
     saveState();
 }
 
@@ -588,7 +805,10 @@ function updateShadowBlur(value) {
     text.shadow = text.shadow || {};
     text.shadow.blur = parseFloat(value);
     const el = document.getElementById('text-' + text.id);
-    if (el) applyShadowEffect(el, text.shadow);
+    if (el) {
+        el.dataset.shadow = JSON.stringify(text.shadow);
+        applyShadowEffect(el, text.shadow);
+    }
     saveState();
 }
 
@@ -598,7 +818,10 @@ function updateShadowOpacity(value) {
     text.shadow = text.shadow || {};
     text.shadow.opacity = parseFloat(value);
     const el = document.getElementById('text-' + text.id);
-    if (el) applyShadowEffect(el, text.shadow);
+    if (el) {
+        el.dataset.shadow = JSON.stringify(text.shadow);
+        applyShadowEffect(el, text.shadow);
+    }
     saveState();
 }
 
@@ -606,7 +829,11 @@ function updateDriftDirection(value) {
     const text = getSelectedText();
     if (!text) return;
     text.drift = text.drift || {};
-    text.drift.direction = parseFloat(value);
+    text.drift.direction = value;
+    setDriftDirectionButtons(value);
+    const el = document.getElementById('text-' + text.id);
+    if (el) el.dataset.drift = JSON.stringify(text.drift);
+    if (text.drift.enabled) startTextDrift(text.id);
     saveState();
 }
 
@@ -615,13 +842,77 @@ function updateDriftSpeed(value) {
     if (!text) return;
     text.drift = text.drift || {};
     text.drift.speed = parseFloat(value);
+    const el = document.getElementById('text-' + text.id);
+    if (el) el.dataset.drift = JSON.stringify(text.drift);
+    if (text.drift.enabled) startTextDrift(text.id);
     saveState();
 }
 
-function updateRandomWriteDuration(value) {
+function setDriftDirectionButtons(value) {
+    document.querySelectorAll('input[name="tc-drift-direction"]').forEach(input => {
+        input.checked = input.value === value;
+    });
+}
+
+
+function syncSliderFill(slider) {
+    if (!slider) return;
+    const pct = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+    slider.style.setProperty('--fill', pct + '%');
+}
+
+function stepTextSize(delta) {
+    const slider = document.getElementById('tc-size');
+    if (!slider) return;
+    const current = parseFloat(slider.value) || 32;
+    const min = parseFloat(slider.min) || 8;
+    const max = parseFloat(slider.max) || 200;
+    const next = Math.max(min, Math.min(max, current + delta));
+    slider.value = next;
+    syncSliderFill(slider);
+    applyTextProperty('fontSize', next);
+}
+
+(function () {
+    function attachStepper(btnId, delta) {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        let holdTimer = null;
+        let holdInterval = null;
+
+        function stop() {
+            clearTimeout(holdTimer);
+            clearInterval(holdInterval);
+            holdTimer = holdInterval = null;
+        }
+
+        function start(e) {
+            if (e.button !== undefined && e.button !== 0) return;
+            e.preventDefault();
+            stepTextSize(delta);
+            holdTimer = setTimeout(() => {
+                holdInterval = setInterval(() => stepTextSize(delta), 200);
+            }, 500);
+        }
+
+        btn.addEventListener('mousedown', start);
+        btn.addEventListener('mouseup', stop);
+        btn.addEventListener('mouseleave', stop);
+        btn.addEventListener('touchstart', start, { passive: false });
+        btn.addEventListener('touchend', stop);
+        btn.addEventListener('touchcancel', stop);
+    }
+
+    attachStepper('tc-size-down', -1);
+    attachStepper('tc-size-up', 1);
+})();
+
+function nudgeSelectedTextZ(delta) {
     const text = getSelectedText();
-    if (!text) return;
-    text.randomWriteOn = text.randomWriteOn || {};
-    text.randomWriteOn.duration = parseFloat(value);
-    saveState();
+    if (!text) return false;
+    const next = (parseFloat(text.z) || 0) + delta;
+    applyTextProperty('z', next);
+    const zSlider = document.getElementById('tc-z');
+    if (zSlider) zSlider.value = next;
+    return true;
 }

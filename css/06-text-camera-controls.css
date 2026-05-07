@@ -1,0 +1,1835 @@
+        /* ════════════════════════════════════════════════════════════════ */
+        /*  TEXT LAYER                                                      */
+        /* ════════════════════════════════════════════════════════════════ */
+
+        .text-item {
+            position: absolute;
+            min-width: 100px;
+            min-height: 2em;
+            width: max-content;
+            cursor: move;
+        }
+
+        .text-item.text-selected {
+            z-index: 1000 !important;
+        }
+
+        .text-input {
+            display: block;
+            width: auto;
+            min-width: 4ch;
+            field-sizing: content;
+            height: auto;
+            padding: 4px 16px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            outline: none;
+            font-size: 32px;
+            font-family: system-ui;
+            color: #000000;
+            white-space: nowrap;
+            resize: none;
+            cursor: inherit;
+        }
+
+        .text-input:focus {
+            border-bottom-color: var(--accent);
+        }
+
+        .text-item:not(.text-editing) .text-input {
+            user-select: none;
+        }
+
+        .text-item.text-editing {
+            cursor: text;
+        }
+
+        .text-chrome {
+            position: absolute;
+            top: -12px;
+            left: -18px;
+            width: calc(100% + 36px);
+            height: calc(100% + 24px);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            border: 2px solid rgba(180, 120, 255, 0.45);
+            border-radius: 2px;
+        }
+
+        .text-item.text-selected .text-chrome {
+            opacity: 1;
+        }
+
+        .text-chrome::before {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: -18px;
+            width: 1px;
+            height: 18px;
+            background: rgba(180, 120, 255, 0.45);
+            transform: translateX(-50%);
+            pointer-events: none;
+        }
+
+        .text-handle {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 50%;
+            cursor: ns-resize;
+            pointer-events: auto;
+            z-index: 3;
+        }
+
+        .text-handle-n,
+        .text-handle-e,
+        .text-handle-s,
+        .text-handle-w { display: none; }
+        .text-handle-ne { top: -15px; right: -15px; cursor: nesw-resize; }
+        .text-handle-se { bottom: -15px; right: -15px; cursor: nwse-resize; }
+        .text-handle-sw { bottom: -15px; left: -15px; cursor: nesw-resize; }
+        .text-handle-nw { top: -15px; left: -15px; cursor: nwse-resize; }
+
+        .text-rotate-knob {
+            position: absolute;
+            width: 26px;
+            height: 26px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='white' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
+            border: 0;
+            top: -43px;
+            left: 50%;
+            transform: translateX(-50%) rotate(180deg);
+            cursor: grab;
+            pointer-events: auto;
+            z-index: 2;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+        }
+
+        .text-rotate-knob:active {
+            cursor: grabbing;
+        }
+
+        .text-slide-up {
+            animation: text-slide-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes text-slide-up {
+            0% {
+                transform: translateY(80px);
+                opacity: 0;
+            }
+            35% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* ════════════════════════════════════════════════════════════════ */
+        /*  TEXT CONTROLS PANEL                                             */
+        /* ════════════════════════════════════════════════════════════════ */
+
+        #text-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px;
+            border-top: 1.5px solid var(--node-border);
+            border-bottom: 1.5px solid var(--node-border);
+        }
+
+        #btn-add-text {
+            padding: 8px 12px;
+            background: var(--node-bg);
+            color: var(--text);
+            border: 1.5px solid var(--node-border);
+            border-radius: 4px;
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #btn-add-text:hover {
+            background: var(--tb-hover-bg);
+            border-color: var(--tb-hover-border);
+        }
+
+        #btn-add-text.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        .tc-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .tc-field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .tc-field label,
+        .tc-group-title {
+            font-family: 'DM Mono', monospace;
+            font-size: 9px;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        #tc-content {
+            min-height: 58px;
+            resize: vertical;
+            padding: 7px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--node-border);
+            border-radius: 5px;
+            color: var(--text);
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        #tc-content:focus {
+            outline: none;
+            border-color: var(--tb-active-border);
+            box-shadow: var(--tb-active-glow);
+        }
+
+        .tc-grid {
+            display: grid;
+            grid-template-columns: 1fr 42px;
+            gap: 8px;
+            align-items: end;
+        }
+
+        .tc-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }
+
+        .tc-row label {
+            flex-shrink: 0;
+            width: 54px;
+            color: var(--muted);
+        }
+
+        .tc-row select,
+        .tc-row input[type="range"] {
+            flex: 1;
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--node-border);
+            color: var(--text);
+            border-radius: 2px;
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+        }
+
+        .tc-row input[type="range"] {
+            border: none;
+        }
+
+        .tc-row select:focus,
+        .tc-row input[type="range"]:focus {
+            outline: none;
+        }
+
+        .tc-row input[type="color"] {
+            width: 42px;
+            height: 31px;
+            padding: 2px;
+            border: 1px solid var(--node-border);
+            border-radius: 5px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tc-inline-value {
+            min-width: 34px;
+            text-align: right;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .tc-effect-row {
+            display: grid;
+            grid-template-columns: 20px 1fr;
+            gap: 8px;
+            align-items: center;
+            color: var(--muted);
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .tc-effects {
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+        }
+
+        .tc-effect-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .tc-effect-group label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--muted);
+            cursor: pointer;
+        }
+
+        .tc-effect-group input[type="checkbox"] {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            margin: 0;
+            cursor: pointer;
+            background: center / contain no-repeat url("../Icons SVGs/radio_button_unchecked.svg");
+            border: 0;
+        }
+
+        .tc-effect-group input[type="checkbox"]:checked {
+            background-image: url("../Icons SVGs/radio_button_checked.svg");
+            filter: drop-shadow(0 0 5px rgba(255,117,31,0.82));
+        }
+
+        .tc-effect-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding-left: 24px;
+            font-size: 10px;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-5px);
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        .tc-effect-controls.tc-open {
+            opacity: 1;
+            pointer-events: all;
+            transform: translateY(0);
+        }
+
+        .tc-effect-controls .tc-row {
+            gap: 6px;
+            font-size: 10px;
+        }
+
+        .tc-effect-controls label {
+            width: 50px;
+        }
+
+        .tc-direction-buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            flex: 1;
+        }
+
+        .tc-direction-button {
+            width: auto !important;
+            height: 28px;
+            justify-content: center;
+            gap: 3px !important;
+            padding: 0 5px;
+            border: 1px solid var(--node-border);
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text) !important;
+        }
+
+        .tc-direction-button input[type="radio"] {
+            display: none;
+        }
+
+        .tc-direction-button,
+        .tc-direction-button:focus,
+        .tc-direction-button:focus-visible,
+        .tc-direction-button:focus-within,
+        .tc-direction-button input[type="radio"],
+        .tc-direction-button input[type="radio"]:focus,
+        .tc-direction-button input[type="radio"]:focus-visible {
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .tc-direction-button:has(input[type="radio"]:checked) {
+            border-color: transparent;
+            box-shadow: none;
+        }
+
+        .tc-direction-button:has(input[type="radio"]:checked) svg {
+            color: #ff751f;
+            filter: drop-shadow(0 0 5px rgba(255,117,31,0.88));
+        }
+
+        #camera-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 0;
+            border: 0;
+        }
+
+        .cam-actions {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 7px;
+        }
+
+        .cam-actions button,
+        #cam-draw-path,
+        #cam-add-ramp {
+            padding: 7px 8px;
+            background: var(--node-bg);
+            color: var(--text);
+            border: 1px solid var(--node-border);
+            border-radius: 4px;
+            font-family: 'DM Mono', monospace;
+            font-size: 10px;
+            cursor: pointer;
+        }
+
+        .cam-actions button {
+            min-height: 28px;
+            font-size: 12px;
+            letter-spacing: 0.11em;
+        }
+
+        .cam-actions button:nth-child(4),
+        .cam-actions button:nth-child(5),
+        .cam-actions button:nth-child(6) {
+            margin-top: 7.5px;
+        }
+
+        .cam-actions button:nth-child(6) {
+            grid-column: 3;
+        }
+
+        .cam-visibility-toggle {
+            display: grid;
+            grid-template-columns: 13px 25px 13px;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            padding-inline: 5px;
+        }
+
+        .cam-visibility-toggle img {
+            width: 13px;
+            height: 13px;
+            object-fit: contain;
+            opacity: 0.42;
+            filter: brightness(0) saturate(100%) invert(56%) sepia(96%) saturate(1400%) hue-rotate(346deg) brightness(103%) contrast(101%);
+            pointer-events: none;
+        }
+
+        .cam-visibility-toggle .cam-vis-eye {
+            opacity: 0.95;
+            filter: brightness(0) saturate(100%) invert(56%) sepia(96%) saturate(1400%) hue-rotate(346deg) brightness(103%) contrast(101%) drop-shadow(0 0 7px rgba(255, 117, 31, 0.78));
+        }
+
+        .cam-visibility-toggle.is-hidden .cam-vis-eye {
+            opacity: 0.34;
+            filter: brightness(0) saturate(100%) invert(56%) sepia(96%) saturate(1400%) hue-rotate(346deg) brightness(80%) contrast(96%);
+        }
+
+        .cam-visibility-toggle.is-hidden .cam-vis-eye-closed {
+            opacity: 0.95;
+            filter: brightness(0) saturate(100%) invert(56%) sepia(96%) saturate(1400%) hue-rotate(346deg) brightness(103%) contrast(101%) drop-shadow(0 0 7px rgba(255, 117, 31, 0.78));
+        }
+
+        .cam-vis-switch {
+            position: relative;
+            width: 25px;
+            height: 13px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.2);
+            box-shadow: none;
+            pointer-events: none;
+        }
+
+        .cam-vis-switch::after {
+            content: "";
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.95);
+            box-shadow: none;
+            transition: transform 0.16s ease;
+        }
+
+        .cam-visibility-toggle.is-hidden .cam-vis-switch::after {
+            transform: translateX(12px);
+        }
+
+        #cam-draw-path {
+            min-height: 30px;
+            border-color: transparent;
+            font-size: 12px;
+        }
+
+        .cam-actions button:hover,
+        #cam-draw-path:hover,
+        #cam-add-ramp:hover,
+        #cam-draw-path.active,
+        #cam-add-ramp.active {
+            background: var(--tb-hover-bg);
+            border-color: transparent;
+            color: var(--tb-hover-text);
+        }
+
+        .cam-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .cam-row label {
+            width: 54px;
+            flex-shrink: 0;
+        }
+
+        .cam-row input[type="range"] {
+            flex: 1;
+        }
+
+        #cam-ramp-value:disabled {
+            opacity: 0.65;
+        }
+
+        .cam-mode-row {
+            display: grid;
+            grid-template-columns: 20px 1fr;
+            gap: 8px;
+            align-items: center;
+            color: var(--muted);
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .cam-mode-row input[type="checkbox"] {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            margin: 0;
+            background: center / contain no-repeat url("../Icons SVGs/radio_button_unchecked.svg");
+            border: 0;
+        }
+
+        .cam-mode-row input[type="checkbox"]:checked {
+            background-image: url("../Icons SVGs/radio_button_checked.svg");
+            filter: drop-shadow(0 0 5px rgba(255,117,31,0.82));
+        }
+
+        #side-panel::-webkit-scrollbar {
+            width: 7px;
+        }
+
+        #side-panel::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.22);
+            border-radius: 999px;
+        }
+
+        #side-panel .sp-frame-btn,
+        #side-panel-close,
+        #btn-kshortcuts,
+        #cp-toggle,
+        #btn-add-text,
+        #cam-draw-path,
+        #cam-add-ramp,
+        .cam-actions button,
+        #tb-dock-controls button,
+        .tc-effect-row,
+        .cam-mode-row,
+        .tc-inline-value,
+        .tc-stepper {
+            min-height: 28px;
+            border-color: transparent;
+            border-radius: 6px;
+            background: #1d1719;
+            color: rgba(250,250,250,0.94);
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 12px;
+            letter-spacing: 0.14em;
+            line-height: 1;
+            box-shadow: none;
+            text-transform: none;
+        }
+
+        #side-panel .sp-frame-btn,
+        #side-panel-close,
+        #btn-kshortcuts {
+            width: 100%;
+            padding: 0 7px;
+            justify-content: center;
+            white-space: nowrap;
+        }
+
+        #side-panel-close {
+            font-size: 14px;
+            letter-spacing: 0;
+        }
+
+        #btn-kshortcuts {
+            font-size: 10px;
+            letter-spacing: 0.12em;
+        }
+
+        .sp-z-btn {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            padding: 0 4px;
+            font-size: 7px;
+            letter-spacing: 0.08em;
+            transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+        }
+        .sp-z-btn.sp-z-flash {
+            box-shadow: 0 0 7px rgba(255,255,255,0.2) !important;
+            text-shadow: 0 0 4px rgba(255,255,255,0.58) !important;
+            transition: none !important;
+        }
+        .sp-z-btn.sp-z-flash img {
+            filter: brightness(0) invert(1)
+                    drop-shadow(0 0 3px #ff751f)
+                    drop-shadow(0 0 6px #ff751f) !important;
+        }
+
+        .sp-z-btn span {
+            min-width: 0;
+        }
+
+        .sp-z-btn img,
+        .cp-caret {
+            width: 11px;
+            height: 11px;
+            flex: 0 0 auto;
+            opacity: 0.9;
+            filter: brightness(0) invert(1);
+        }
+
+        .sp-z-btn.is-down img {
+            transform: rotate(180deg);
+        }
+
+        /* Z-axis rank indicator — pops out right of side panel on click */
+        #sp-z-rank {
+            position: fixed;
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 6px 5px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            backdrop-filter: blur(6px);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateX(-6px);
+            transition: opacity 0.16s ease, transform 0.16s ease;
+        }
+        #sp-z-rank.is-visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .sp-z-rank-cell {
+            width: 14px;
+            height: 7px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.09);
+            border: 1px solid rgba(255,255,255,0.06);
+            transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        .sp-z-rank-cell.is-target {
+            background: rgba(255,117,31,0.38);
+            border-color: rgba(255,117,31,0.55);
+            box-shadow: 0 0 6px rgba(255,117,31,0.45);
+        }
+        body.light #sp-z-rank {
+            background: rgba(0,0,0,0.04);
+            border-color: rgba(0,0,0,0.08);
+        }
+        body.light .sp-z-rank-cell {
+            background: rgba(0,0,0,0.08);
+            border-color: rgba(0,0,0,0.06);
+        }
+
+        #cp-section {
+            gap: 0;
+        }
+
+        #cp-toggle {
+            min-height: 31px;
+            padding: 0 13px;
+            border-color: rgba(205, 0, 0, 0.95);
+            font-size: 13px;
+            letter-spacing: 0.16em;
+            background: rgba(255,255,255,0.06);
+        }
+
+        .cp-caret {
+            display: block;
+            background: currentColor;
+            clip-path: polygon(20% 8%, 92% 50%, 20% 92%);
+            transition: transform 0.18s ease;
+        }
+
+        #cp-section.cp-open .cp-caret {
+            transform: rotate(90deg);
+        }
+
+        #cp-list {
+            top: calc(100% + 6px);
+            border-radius: 6px;
+            z-index: 140;
+        }
+
+        .cp-session-tip {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            z-index: 155;
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: rgba(29, 23, 25, 0.96);
+            color: rgba(255,255,255,0.94);
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 12px;
+            line-height: 1.25;
+            letter-spacing: 0.04em;
+            box-shadow: 0 8px 22px rgba(0,0,0,0.34), 0 0 7px rgba(255,255,255,0.14);
+            pointer-events: none;
+        }
+
+        #cp-section.cp-open.cp-show-tip .cp-session-tip {
+            display: block;
+        }
+
+        #cp-section.cp-open.cp-show-tip #cp-list {
+            top: calc(100% + 47px);
+        }
+
+        #text-controls {
+            padding: 0;
+            border: 0;
+            gap: 14.5px;
+        }
+
+        .tc-panel {
+            gap: 14.5px;
+        }
+
+        .tc-field,
+        .cam-field {
+            display: flex;
+            flex-direction: column;
+            gap: 7.5px;
+        }
+
+        .tc-field label,
+        .tc-group-title,
+        .cam-field label {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11px;
+            line-height: 1;
+            letter-spacing: 0.24em;
+            color: rgba(255,255,255,0.9);
+            text-transform: uppercase;
+        }
+
+        #tc-content,
+        .tc-row select {
+            border: 1.5px solid rgba(245,245,245,0.88);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.08);
+            color: rgba(250,250,250,0.94);
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 11px;
+            letter-spacing: 0.15em;
+        }
+
+        #tc-font {
+            appearance: none;
+            -webkit-appearance: none;
+            border: 1.5px solid rgba(245,245,245,0.88);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.08) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,0.6)'/%3E%3C/svg%3E") no-repeat right 10px center;
+            color: rgba(250,250,250,0.94);
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 15px;
+            letter-spacing: 0.15em;
+            padding: 6px 28px 6px 10px;
+            height: 33px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        #tc-font:focus {
+            outline: none;
+            border-color: rgba(245,245,245,1);
+        }
+
+        #tc-font option {
+            background: #1e181a;
+            color: rgba(250,250,250,0.94);
+        }
+
+        #tc-color {
+            appearance: none;
+            -webkit-appearance: none;
+            border: 1.5px solid rgba(245,245,245,0.88);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.08);
+            padding: 2px;
+            cursor: pointer;
+            width: 100%;
+            box-sizing: border-box;
+            height: 33px;
+        }
+
+        #tc-color::-webkit-color-swatch-wrapper,
+        .tc-row input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+            border: none;
+            border-radius: 3px;
+        }
+
+        #tc-color::-webkit-color-swatch,
+        .tc-row input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 3px;
+        }
+
+        #tc-color::-moz-color-swatch,
+        .tc-row input[type="color"]::-moz-color-swatch {
+            border: none;
+            border-radius: 3px;
+        }
+
+        #tc-content {
+            min-height: 88px;
+            resize: none;
+            padding: 13px;
+        }
+
+        .tc-grid {
+            grid-template-columns: 1fr 47px;
+            gap: 8.5px;
+            align-items: end;
+        }
+
+        .tc-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 40px 40px;
+            align-items: end;
+            gap: 8.5px;
+            font-size: 10px;
+            position: relative;
+        }
+
+        .tc-row > label {
+            grid-column: 1 / -1;
+            width: auto;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11px;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.9);
+        }
+
+        .tc-row input[type="range"],
+        .cam-field input[type="range"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 100%;
+            height: 16px;
+        }
+
+        .tc-row input[type="range"] {
+            grid-column: 1;
+        }
+
+        #tc-size {
+            height: 15px;
+        }
+
+        .tc-inline-value {
+            min-width: 0;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-align: center;
+        }
+
+        .tc-stepper {
+            height: 28px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            overflow: hidden;
+        }
+
+        .tc-stepper button {
+            position: relative;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .tc-stepper button + button {
+            border-left: 1px solid transparent;
+        }
+
+        .tc-stepper button::before {
+            content: "";
+            position: absolute;
+            inset: 50% auto auto 50%;
+            width: 8px;
+            height: 8px;
+            border: 1.4px solid rgba(255,255,255,0.92);
+            border-top: 0;
+            border-right: 0;
+            transform: translate(-35%, -50%) rotate(45deg);
+        }
+
+        .tc-stepper button + button::before {
+            transform: translate(-65%, -50%) rotate(225deg);
+        }
+
+        .tc-row input[type="range"]::-webkit-slider-runnable-track,
+        .cam-field input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px;
+            border: none;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #00c853 0 var(--fill, 12.5%), #ff3030 var(--fill, 12.5%) 100%);
+        }
+
+        #tc-size::-webkit-slider-runnable-track {
+            background: #c9cdd0;
+        }
+
+        .tc-row input[type="range"]::-webkit-slider-thumb,
+        .cam-field input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            margin-top: -3px;
+            border: 0;
+            border-radius: 50%;
+            background: #fff;
+            transition: box-shadow 0.15s;
+        }
+
+        .tc-row input[type="range"]:hover::-webkit-slider-thumb,
+        .cam-field input[type="range"]:hover::-webkit-slider-thumb,
+        .tc-row input[type="range"]:active::-webkit-slider-thumb,
+        .cam-field input[type="range"]:active::-webkit-slider-thumb {
+            box-shadow: 0 0 0 2.5px rgba(255,255,255,0.3);
+        }
+
+        .tc-row input[type="range"]::-moz-range-track,
+        .cam-field input[type="range"]::-moz-range-track {
+            height: 6px;
+            border: none;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #00c853 0 var(--fill, 12.5%), #ff3030 var(--fill, 12.5%) 100%);
+        }
+
+        #tc-size::-moz-range-track {
+            background: #c9cdd0;
+        }
+
+        .tc-row input[type="range"]::-moz-range-thumb,
+        .cam-field input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            border: 0;
+            border-radius: 50%;
+            background: #fff;
+            transition: box-shadow 0.15s;
+        }
+
+        .tc-row input[type="range"]:hover::-moz-range-thumb,
+        .cam-field input[type="range"]:hover::-moz-range-thumb,
+        .tc-row input[type="range"]:active::-moz-range-thumb,
+        .cam-field input[type="range"]:active::-moz-range-thumb {
+            box-shadow: 0 0 0 2.5px rgba(255,255,255,0.3);
+        }
+
+        .tc-row input[type="color"] {
+            width: 47px;
+            height: 28px;
+            padding: 0;
+            border: 1.5px solid rgba(245,245,245,0.88);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.08);
+        }
+
+        .tc-effects {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 5.5px;
+            padding-top: 23.5px;
+            position: relative;
+        }
+
+        .tc-effects .tc-group-title {
+            position: absolute;
+            top: -3px;
+            left: 0;
+        }
+
+        .tc-effect-group {
+            position: relative;
+        }
+
+        .tc-effect-row {
+            min-height: 28px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 5.5px;
+            padding: 0 7px;
+            cursor: pointer;
+            font-size: 13px;
+            letter-spacing: 0.12em;
+        }
+
+        .tc-effect-group input[type="checkbox"],
+        .cam-mode-row input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            filter: brightness(0) invert(1);
+        }
+
+        .tc-effect-controls {
+            position: absolute;
+            top: calc(100% + 4.5px);
+            left: 0;
+            width: min(210px, calc(100vw - 72px));
+            padding: 7.5px;
+            border: 1.5px solid rgba(245,245,245,0.88);
+            border-radius: 6px;
+            background: rgba(55,55,55,0.96);
+            box-shadow: 0 12px 28px rgba(0,0,0,0.42);
+            backdrop-filter: blur(18px);
+            z-index: 160;
+        }
+
+        .tc-effect-group:nth-child(3) .tc-effect-controls {
+            right: 0;
+            left: auto;
+        }
+
+        .tc-effect-controls .tc-row {
+            display: grid;
+            grid-template-columns: 54px 1fr;
+            gap: 4.5px;
+            align-items: center;
+        }
+
+        .tc-effect-controls .tc-row > label {
+            grid-column: auto;
+            font-size: 9px;
+            letter-spacing: 0.12em;
+        }
+
+        #tc-shadow-controls .tc-row,
+        #tc-drift-controls .tc-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2px;
+        }
+
+        #tc-shadow-controls input[type="range"] {
+            border: none;
+            background: transparent;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        #tc-shadow-controls input[type="range"]::-webkit-slider-runnable-track,
+        #tc-drift-controls input[type="range"]::-webkit-slider-runnable-track {
+            background: linear-gradient(90deg, #ff3030 0 var(--fill, 50%), #00c853 var(--fill, 50%) 100%);
+        }
+
+        #tc-shadow-controls input[type="range"]::-moz-range-track,
+        #tc-drift-controls input[type="range"]::-moz-range-track {
+            background: linear-gradient(90deg, #ff3030 0 var(--fill, 50%), #00c853 var(--fill, 50%) 100%);
+        }
+
+        #tc-drift-speed {
+            border: 0;
+            outline: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        #tc-drift-speed::-webkit-slider-runnable-track,
+        #tc-drift-speed:hover::-webkit-slider-runnable-track,
+        #tc-drift-speed:active::-webkit-slider-runnable-track {
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        #tc-drift-speed::-webkit-slider-thumb {
+            border: 0;
+            background: #fff;
+            box-shadow: none;
+        }
+
+        #tc-drift-speed:hover::-webkit-slider-thumb,
+        #tc-drift-speed:active::-webkit-slider-thumb {
+            border: 0;
+            background: #fff;
+            box-shadow: 0 0 0 2.5px rgba(255,255,255,0.3);
+        }
+
+        #tc-drift-speed::-moz-range-track,
+        #tc-drift-speed:hover::-moz-range-track,
+        #tc-drift-speed:active::-moz-range-track {
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        #tc-drift-speed::-moz-range-thumb {
+            border: 0;
+            background: #fff;
+            box-shadow: none;
+        }
+
+        #tc-drift-speed:hover::-moz-range-thumb,
+        #tc-drift-speed:active::-moz-range-thumb {
+            border: 0;
+            background: #fff;
+            box-shadow: 0 0 0 2.5px rgba(255,255,255,0.3);
+        }
+
+        .tc-direction-buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 3.5px;
+        }
+
+        .tc-direction-button {
+            min-height: 20px;
+            border-color: transparent;
+            border-radius: 5px;
+            font-size: 12px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #1d1719;
+            color: rgba(255,255,255,0.94) !important;
+        }
+
+        #camera-controls {
+            padding-top: 23.5px;
+            position: relative;
+        }
+
+        #camera-controls > .tc-group-title {
+            position: absolute;
+            top: -3px;
+            left: 0;
+        }
+
+        .cam-field {
+            margin-top: 4.5px;
+        }
+
+        .cam-field input[type="range"] {
+            width: 68%;
+            align-self: center;
+        }
+
+        .cam-speed-wrap {
+            --snail-glow: 0.75;
+            --rabbit-glow: 0.25;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 18px minmax(0, 1fr) 18px;
+            gap: 5.5px;
+            align-items: center;
+        }
+
+        .cam-speed-wrap #cam-speed {
+            width: 100%;
+        }
+
+        .cam-speed-wrap #cam-ramp-value {
+            width: 100%;
+        }
+
+        .cam-speed-icon {
+            width: 16px;
+            height: 16px;
+            object-fit: contain;
+            pointer-events: none;
+            opacity: 0.48;
+            transform: scale(1);
+            filter: brightness(0) invert(1);
+            transition: opacity 0.16s ease, transform 0.16s ease, filter 0.16s ease;
+        }
+
+        .cam-speed-snail {
+            filter: brightness(0) invert(1);
+        }
+
+        .cam-speed-rabbit {
+            filter: brightness(0) invert(1);
+        }
+
+        .cam-speed-wrap.is-snail-active .cam-speed-snail {
+            opacity: 1;
+            transform: scale(1.05);
+            filter:
+                brightness(0) saturate(100%) invert(61%) sepia(90%) saturate(713%) hue-rotate(87deg) brightness(94%) contrast(91%)
+                drop-shadow(0 0 13px rgba(0, 200, 83, 0.92));
+        }
+
+        .cam-speed-wrap.is-rabbit-active .cam-speed-rabbit {
+            opacity: 1;
+            transform: scale(1.05);
+            filter:
+                brightness(0) saturate(100%) invert(31%) sepia(88%) saturate(2548%) hue-rotate(344deg) brightness(106%) contrast(104%)
+                drop-shadow(0 0 13px rgba(255, 48, 48, 0.92));
+        }
+
+        .cam-ramp-speed-wrap:has(#cam-ramp-value:disabled) .cam-speed-icon {
+            opacity: 0.2;
+            filter: brightness(0) invert(1);
+            transform: scale(1);
+        }
+
+        #cam-speed,
+        #cam-ramp-value {
+            border: 0;
+            outline: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        #cam-speed::-webkit-slider-runnable-track,
+        #cam-speed::-webkit-slider-thumb,
+        #cam-speed:hover::-webkit-slider-thumb,
+        #cam-speed:active::-webkit-slider-thumb,
+        #cam-ramp-value::-webkit-slider-runnable-track,
+        #cam-ramp-value::-webkit-slider-thumb,
+        #cam-ramp-value:hover::-webkit-slider-thumb,
+        #cam-ramp-value:active::-webkit-slider-thumb {
+            border: 0;
+            box-shadow: none;
+        }
+
+        #cam-speed::-moz-range-track,
+        #cam-speed::-moz-range-thumb,
+        #cam-speed:hover::-moz-range-thumb,
+        #cam-speed:active::-moz-range-thumb,
+        #cam-ramp-value::-moz-range-track,
+        #cam-ramp-value::-moz-range-thumb,
+        #cam-ramp-value:hover::-moz-range-thumb,
+        #cam-ramp-value:active::-moz-range-thumb {
+            border: 0;
+            box-shadow: none;
+        }
+
+        .cam-extra-row {
+            display: grid;
+            grid-template-columns: 1.15fr 1fr;
+            gap: 12.5px;
+        }
+
+        #cam-add-ramp,
+        .cam-mode-row {
+            min-height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6.5px;
+            padding: 0 9px;
+            font-size: 12px;
+            letter-spacing: 0.11em;
+            white-space: nowrap;
+        }
+
+        #tb-dock-controls {
+            left: 24px;
+            bottom: 29.5px;
+            width: 54px;
+            gap: 6.5px;
+        }
+
+        #tb-dock-controls button {
+            min-height: 20px;
+            padding: 2px 0;
+            font-family: 'DM Mono', monospace;
+            font-size: 9px;
+            letter-spacing: 0.025em;
+            line-height: 1;
+            border-color: transparent;
+        }
+
+        body:not(.light) #side-panel button,
+        body:not(.light) #side-panel button:hover,
+        body:not(.light) #side-panel button:active,
+        body:not(.light) #side-panel .sp-frame-btn,
+        body:not(.light) #side-panel .sp-frame-btn:hover,
+        body:not(.light) #side-panel .tc-effect-row,
+        body:not(.light) #side-panel .tc-effect-row:hover,
+        body:not(.light) #side-panel .cam-mode-row,
+        body:not(.light) #side-panel .cam-mode-row:hover,
+        body:not(.light) #side-panel .tc-direction-button,
+        body:not(.light) #side-panel .tc-direction-button:hover,
+        body:not(.light) #tb-dock-controls button,
+        body:not(.light) #tb-dock-controls button:hover {
+            border-color: transparent;
+            background-color: #1d1719;
+            transform: none;
+        }
+
+        body:not(.light) #side-panel {
+            box-shadow:
+                7px 11px 48px rgba(0, 110, 255, 0.24),
+                0 0 0 1px rgba(255,255,255,0.13) inset;
+        }
+
+        body:not(.light) #side-panel button:hover,
+        body:not(.light) #side-panel button:active,
+        body:not(.light) #side-panel button.active,
+        body:not(.light) #side-panel .sp-frame-btn:hover,
+        body:not(.light) #side-panel .sp-frame-btn:active,
+        body:not(.light) #side-panel .tc-effect-row:hover,
+        body:not(.light) #side-panel .tc-effect-row:active,
+        body:not(.light) #side-panel .cam-mode-row:hover,
+        body:not(.light) #side-panel .cam-mode-row:active,
+        body:not(.light) #side-panel .tc-direction-button:hover,
+        body:not(.light) #side-panel .tc-direction-button:active,
+        body:not(.light) #tb-dock-controls button:hover,
+        body:not(.light) #tb-dock-controls button:active {
+            border-color: transparent;
+            background-color: #1d1719;
+            box-shadow: 0 0 7px rgba(255,255,255,0.18);
+            text-shadow: 0 0 4px rgba(255,255,255,0.55);
+            transform: none;
+        }
+
+        #side-panel button,
+        #side-panel button:focus,
+        #side-panel button:focus-visible,
+        #side-panel button:active,
+        #side-panel .sp-frame-btn:focus,
+        #side-panel .sp-frame-btn:focus-visible,
+        #side-panel .tc-effect-row:focus,
+        #side-panel .tc-effect-row:focus-visible,
+        #side-panel .cam-mode-row:focus,
+        #side-panel .cam-mode-row:focus-visible,
+        #tb-dock-controls button,
+        #tb-dock-controls button:focus,
+        #tb-dock-controls button:focus-visible,
+        #tb-dock-controls button:active {
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body:not(.light) #side-panel #cp-toggle {
+            border-color: red;
+            background: var(--bar-bg);
+            color: var(--text);
+            box-shadow: none;
+            text-shadow: none;
+        }
+
+        body:not(.light) #side-panel #cp-toggle:hover {
+            border-color: var(--tb-hover-border);
+            background: var(--tb-hover-bg);
+            color: var(--tb-hover-text);
+            box-shadow: none;
+            text-shadow: none;
+        }
+
+        body:not(.light) #side-panel .cp-item {
+            border-left-color: red;
+            background: rgba(0, 110, 255, 0.10);
+            color: var(--text);
+        }
+
+        body:not(.light) #side-panel .cp-item.cp-controller {
+            border-left-color: #ff751f;
+            background: rgba(255, 117, 31, 0.10);
+        }
+
+        body:not(.light) #side-panel .cp-copy-btn {
+            border-right-color: red;
+            background: rgba(0, 110, 255, 0.20);
+            color: var(--text);
+            box-shadow: none;
+            text-shadow: none;
+        }
+
+        body:not(.light) #side-panel .cp-copy-btn:hover {
+            background: rgba(0, 110, 255, 0.32);
+        }
+
+        body:not(.light) #side-panel .cp-item.cp-controller .cp-copy-btn {
+            border-right-color: #ff751f;
+            background: rgba(255, 117, 31, 0.20);
+        }
+
+        body:not(.light) #side-panel .cp-item.cp-controller .cp-copy-btn:hover {
+            background: rgba(255, 117, 31, 0.32);
+        }
+
+        body.light #side-panel,
+        body.light #tb-dock-controls {
+            --sp-light-ink: #197278;
+            --sp-light-button: #197278;
+            --sp-light-button-glow: #0f464a;
+            --sp-light-muted: #3b4f50;
+            --sp-light-line: rgba(25, 114, 120, 0.72);
+            --sp-light-soft: rgba(25, 114, 120, 0.08);
+        }
+
+        body.light #side-panel .sp-frame-btn,
+        body.light #side-panel-close,
+        body.light #btn-kshortcuts,
+        body.light #cp-toggle,
+        body.light #btn-add-text,
+        body.light #cam-draw-path,
+        body.light #cam-add-ramp,
+        body.light .cam-actions button,
+        body.light #tb-dock-controls button,
+        body.light .tc-effect-row,
+        body.light .cam-mode-row,
+        body.light .tc-inline-value,
+        body.light .tc-stepper,
+        body.light #tc-content,
+        body.light .tc-row select,
+        body.light .tc-row input[type="color"],
+        body.light .tc-effect-controls {
+            border-color: var(--sp-light-line);
+            background: var(--sp-light-soft);
+            color: var(--sp-light-ink);
+        }
+
+        body.light #side-panel button,
+        body.light #side-panel .tc-effect-row,
+        body.light #side-panel .cam-mode-row,
+        body.light #tb-dock-controls button {
+            border-color: transparent;
+            background: var(--sp-light-button);
+            color: #fff;
+            box-shadow: none;
+            text-shadow: 0 0 3px var(--sp-light-button-glow);
+        }
+
+        body.light #side-panel #sp-top-bar .sp-frame-btn {
+            border-color: transparent;
+            background: var(--sp-light-button);
+            color: #fff;
+            box-shadow: none;
+            text-shadow: 0 0 3px var(--sp-light-button-glow);
+        }
+
+        body.light #side-panel #cp-toggle {
+            border-color: #ff751f;
+            background: rgba(255, 117, 31, 0.10);
+            color: #1a1a1a;
+            text-shadow: none;
+        }
+
+        body.light #side-panel .cp-item {
+            border-left-color: #ff751f;
+            background: rgba(255, 117, 31, 0.10);
+            color: #1a1a1a;
+        }
+
+        body.light #side-panel .cp-item.cp-controller {
+            border-left-color: #006eff;
+            background: rgba(0, 110, 255, 0.12);
+        }
+
+        body.light #side-panel .cp-copy-btn {
+            border-right-color: #ff751f;
+            background: rgba(255, 117, 31, 0.20);
+            color: #1a1a1a;
+            text-shadow: none;
+        }
+
+        body.light #side-panel .tc-field label,
+        body.light #side-panel .tc-group-title,
+        body.light #side-panel .cam-field label,
+        body.light #side-panel .tc-row > label,
+        body.light #side-panel .tc-effect-controls .tc-row > label {
+            color: var(--sp-light-muted);
+        }
+
+        body.light #side-panel #tc-content {
+            border-color: rgba(15, 70, 74, 0.62);
+            background: rgba(255, 255, 255, 0.72);
+            color: #143b3d;
+            box-shadow: inset 0 0 0 1px rgba(25, 114, 120, 0.12);
+        }
+
+        body.light #side-panel #tc-content::placeholder {
+            color: rgba(20, 59, 61, 0.62);
+        }
+
+        body.light #side-panel #tc-font {
+            border-color: rgba(15, 70, 74, 0.62);
+            background: rgba(255, 255, 255, 0.72);
+            color: #143b3d;
+            box-shadow: inset 0 0 0 1px rgba(25, 114, 120, 0.12);
+        }
+
+        body.light #side-panel .tc-effect-group input[type="checkbox"],
+        body.light #side-panel .cam-mode-row input[type="checkbox"] {
+            filter: none;
+        }
+
+        body.light #side-panel .tc-effect-group input[type="checkbox"]:checked,
+        body.light #side-panel .cam-mode-row input[type="checkbox"]:checked {
+            filter: drop-shadow(0 0 5px rgba(255,117,31,0.82));
+        }
+
+        body.light #side-panel .sp-z-btn img {
+            filter: brightness(0) invert(1);
+        }
+
+        body.light #side-panel .tc-stepper button + button {
+            border-color: rgba(15, 70, 74, 0.45);
+        }
+
+        body.light #side-panel .tc-stepper button::before {
+            border-color: #fff;
+        }
+
+        body.light #side-panel .tc-row input[type="range"]::-webkit-slider-runnable-track,
+        body.light #side-panel .cam-field input[type="range"]::-webkit-slider-runnable-track {
+            border-color: var(--sp-light-line);
+            background: linear-gradient(90deg, #197278 0 45%, rgba(59,79,80,0.32) 45% 100%);
+        }
+
+        body.light #side-panel .tc-row input[type="range"]::-webkit-slider-thumb,
+        body.light #side-panel .cam-field input[type="range"]::-webkit-slider-thumb {
+            background: var(--sp-light-ink);
+        }
+
+        body.light #side-panel .tc-row input[type="range"]::-moz-range-track,
+        body.light #side-panel .cam-field input[type="range"]::-moz-range-track {
+            border-color: var(--sp-light-line);
+            background: rgba(59,79,80,0.32);
+        }
+
+        body.light #side-panel .tc-row input[type="range"]::-moz-range-thumb,
+        body.light #side-panel .cam-field input[type="range"]::-moz-range-thumb {
+            background: var(--sp-light-ink);
+        }
+
+        body.light #side-panel #tc-size::-webkit-slider-runnable-track {
+            background: #a8adb2;
+        }
+
+        body.light #side-panel #tc-size::-moz-range-track {
+            background: #a8adb2;
+        }
+
+        body.light #side-panel #tc-shadow-controls {
+            background: rgba(25, 114, 120, 0.13);
+        }
+
+        body.light #side-panel #tc-shadow-controls input[type="range"]::-webkit-slider-runnable-track {
+            border: none;
+            background: linear-gradient(90deg, #ff3030 0 var(--fill, 50%), #00c853 var(--fill, 50%) 100%);
+        }
+
+        body.light #side-panel #tc-shadow-controls input[type="range"]::-webkit-slider-thumb {
+            background: #fff;
+        }
+
+        body.light #side-panel #tc-shadow-controls input[type="range"]::-moz-range-track {
+            border: none;
+            background: linear-gradient(90deg, #ff3030 0 var(--fill, 50%), #00c853 var(--fill, 50%) 100%);
+        }
+
+        body.light #side-panel #tc-shadow-controls input[type="range"]::-moz-range-thumb {
+            background: #fff;
+        }
+
+        body.light #side-panel #tc-drift-controls {
+            background: rgba(25, 114, 120, 0.15);
+        }
+
+        body.light #side-panel #tc-drift-controls .tc-direction-button {
+            border-color: transparent;
+            background: var(--sp-light-button);
+            color: #fff !important;
+            box-shadow: none;
+            text-shadow: 0 0 3px var(--sp-light-button-glow);
+        }
+
+        body.light #side-panel #tc-drift-controls .tc-direction-button:has(input[type="radio"]:checked) {
+            box-shadow: none;
+        }
+
+        body.light #side-panel #tc-drift-controls .tc-direction-button:has(input[type="radio"]:checked) svg {
+            color: #ff751f;
+            filter: drop-shadow(0 0 5px rgba(255,117,31,0.88));
+        }
+
+        body.light #side-panel #tc-drift-controls input[type="range"]::-webkit-slider-runnable-track {
+            border: none;
+            background: linear-gradient(90deg, #ff3030 0 var(--fill, 50%), #00c853 var(--fill, 50%) 100%);
+        }
+
+        body.light #side-panel #tc-drift-controls input[type="range"]::-webkit-slider-thumb {
+            background: #fff;
+        }
+
+        body.light #side-panel #tc-drift-controls input[type="range"]::-moz-range-track {
+            border: none;
+            background: linear-gradient(90deg, #ff3030 0 var(--fill, 50%), #00c853 var(--fill, 50%) 100%);
+        }
+
+        body.light #side-panel #tc-drift-controls input[type="range"]::-moz-range-thumb {
+            background: #fff;
+        }
+
+        body.light #side-panel .cam-speed-icon {
+            filter: brightness(0) invert(0) saturate(0) brightness(0.55);
+        }
+
+        body.light #side-panel .cam-speed-wrap.is-snail-active .cam-speed-snail {
+            filter:
+                brightness(0) saturate(100%) invert(61%) sepia(90%) saturate(713%) hue-rotate(87deg) brightness(94%) contrast(91%)
+                drop-shadow(0 0 13px rgba(0, 200, 83, 0.92));
+        }
+
+        body.light #side-panel .cam-speed-wrap.is-rabbit-active .cam-speed-rabbit {
+            filter:
+                brightness(0) saturate(100%) invert(31%) sepia(88%) saturate(2548%) hue-rotate(344deg) brightness(106%) contrast(104%)
+                drop-shadow(0 0 13px rgba(255, 48, 48, 0.92));
+        }
+
+        body.light #side-panel .cam-ramp-speed-wrap:has(#cam-ramp-value:disabled) .cam-speed-icon {
+            filter: brightness(0) invert(0) saturate(0) brightness(0.55);
+            opacity: 0.2;
+        }
+
+        #cam-speed::-webkit-slider-runnable-track,
+        #cam-ramp-value::-webkit-slider-runnable-track,
+        body.light #side-panel #cam-speed::-webkit-slider-runnable-track,
+        body.light #side-panel #cam-ramp-value::-webkit-slider-runnable-track {
+            background: linear-gradient(90deg, #00c853 0%, #ff3030 100%);
+        }
+
+        #cam-speed::-moz-range-track,
+        #cam-ramp-value::-moz-range-track,
+        body.light #side-panel #cam-speed::-moz-range-track,
+        body.light #side-panel #cam-ramp-value::-moz-range-track {
+            background: linear-gradient(90deg, #00c853 0%, #ff3030 100%);
+        }
+
+        #side-panel button,
+        #side-panel button:hover,
+        #side-panel button:focus,
+        #side-panel button:focus-visible,
+        #side-panel button:active,
+        #side-panel button.active,
+        #side-panel .sp-frame-btn,
+        #side-panel .sp-frame-btn:hover,
+        #side-panel .sp-frame-btn:focus,
+        #side-panel .sp-frame-btn:focus-visible,
+        #side-panel .sp-frame-btn:active,
+        #side-panel .tc-effect-row,
+        #side-panel .tc-effect-row:hover,
+        #side-panel .tc-effect-row:focus,
+        #side-panel .tc-effect-row:focus-visible,
+        #side-panel .tc-effect-row:active,
+        #side-panel .cam-mode-row,
+        #side-panel .cam-mode-row:hover,
+        #side-panel .cam-mode-row:focus,
+        #side-panel .cam-mode-row:focus-visible,
+        #side-panel .cam-mode-row:active,
+        #side-panel .tc-direction-button,
+        #side-panel .tc-direction-button:hover,
+        #side-panel .tc-direction-button:focus,
+        #side-panel .tc-direction-button:focus-visible,
+        #side-panel .tc-direction-button:focus-within,
+        #side-panel .tc-direction-button:active,
+        #tb-dock-controls button,
+        #tb-dock-controls button:hover,
+        #tb-dock-controls button:focus,
+        #tb-dock-controls button:focus-visible,
+        #tb-dock-controls button:active {
+            border: 1px solid transparent !important;
+            border-color: transparent !important;
+            outline: none !important;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #side-panel button:hover,
+        #side-panel button:focus,
+        #side-panel button:focus-visible,
+        #side-panel button:active,
+        #side-panel button.active,
+        #side-panel .sp-frame-btn:hover,
+        #side-panel .sp-frame-btn:focus,
+        #side-panel .sp-frame-btn:focus-visible,
+        #side-panel .sp-frame-btn:active,
+        #side-panel .tc-effect-row:hover,
+        #side-panel .tc-effect-row:focus,
+        #side-panel .tc-effect-row:focus-visible,
+        #side-panel .tc-effect-row:active,
+        #side-panel .cam-mode-row:hover,
+        #side-panel .cam-mode-row:focus,
+        #side-panel .cam-mode-row:focus-visible,
+        #side-panel .cam-mode-row:active,
+        #side-panel .tc-direction-button:hover,
+        #side-panel .tc-direction-button:focus,
+        #side-panel .tc-direction-button:focus-visible,
+        #side-panel .tc-direction-button:focus-within,
+        #side-panel .tc-direction-button:active,
+        #tb-dock-controls button:hover,
+        #tb-dock-controls button:focus,
+        #tb-dock-controls button:focus-visible,
+        #tb-dock-controls button:active {
+            box-shadow: 0 0 7px rgba(255,255,255,0.2) !important;
+            text-shadow: 0 0 4px rgba(255,255,255,0.58);
+        }
+
+        body.light #side-panel button:hover,
+        body.light #side-panel button:focus,
+        body.light #side-panel button:focus-visible,
+        body.light #side-panel button:active,
+        body.light #side-panel button.active,
+        body.light #side-panel .sp-frame-btn:hover,
+        body.light #side-panel .sp-frame-btn:focus,
+        body.light #side-panel .sp-frame-btn:focus-visible,
+        body.light #side-panel .sp-frame-btn:active,
+        body.light #side-panel .tc-effect-row:hover,
+        body.light #side-panel .tc-effect-row:focus,
+        body.light #side-panel .tc-effect-row:focus-visible,
+        body.light #side-panel .tc-effect-row:active,
+        body.light #side-panel .cam-mode-row:hover,
+        body.light #side-panel .cam-mode-row:focus,
+        body.light #side-panel .cam-mode-row:focus-visible,
+        body.light #side-panel .cam-mode-row:active,
+        body.light #side-panel .tc-direction-button:hover,
+        body.light #side-panel .tc-direction-button:focus,
+        body.light #side-panel .tc-direction-button:focus-visible,
+        body.light #side-panel .tc-direction-button:focus-within,
+        body.light #side-panel .tc-direction-button:active,
+        body.light #tb-dock-controls button:hover,
+        body.light #tb-dock-controls button:focus,
+        body.light #tb-dock-controls button:focus-visible,
+        body.light #tb-dock-controls button:active {
+            box-shadow: 0 0 8px rgba(15, 70, 74, 0.38) !important;
+            text-shadow: 0 0 4px var(--sp-light-button-glow);
+        }
+
+        /* ── Two-group layout: tighter buttons, divider before CAMERA ── */
+        #side-panel {
+            gap: 5px;
+        }
+
+        #text-controls {
+            gap: 8px;
+        }
+
+        .tc-panel {
+            gap: 8px;
+        }
+
+        .sp-section-divider {
+            border: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.32);
+            margin: 12px 0 0 0;
+            flex-shrink: 0;
+            filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.14));
+        }
+
+        body.light .sp-section-divider {
+            border-top-color: rgba(25, 114, 120, 0.55);
+            filter: drop-shadow(0 0 3px rgba(25, 114, 120, 0.22));
+        }
+
+        #camera-controls {
+            margin-top: 14px;
+        }
+
+        /* ── FONT row: border -25%, height -1.5px ── */
+        #tc-font {
+            border-width: 1.1px;
+            height: 31.5px;
+            font-size: 14px;
+        }
+
+        #tc-color {
+            border-width: 1.1px;
+            height: 31.5px;
+        }
+
+        /* ── All side-panel fonts -1pt ── */
+        #side-panel-close {
+            font-size: 13px;
+        }
+
+        #cp-toggle {
+            font-size: 12px;
+        }
+
+        #btn-add-text,
+        #cam-draw-path,
+        #cam-add-ramp,
+        .cam-actions button,
+        .tc-inline-value,
+        .cam-mode-row {
+            font-size: 11px;
+        }
+
+        .tc-effect-row {
+            font-size: 12px;
+        }
+
+        .tc-field label,
+        .tc-group-title,
+        .cam-field label,
+        .tc-row > label {
+            font-size: 10px;
+        }

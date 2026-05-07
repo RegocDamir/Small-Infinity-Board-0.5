@@ -1,0 +1,111 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{font-family:'Roboto',sans-serif;color:rgba(30,30,60,0.9);padding:16px 16px 24px;display:flex;flex-direction:column;
+background:radial-gradient(ellipse at 25% 70%, rgba(57,255,20,0.12) 0%, transparent 50%),
+  radial-gradient(ellipse at 75% 25%, rgba(43,121,224,0.1) 0%, transparent 50%),
+  repeating-linear-gradient(0deg, transparent, transparent 29px, rgba(80,80,130,0.08) 30px),
+  repeating-linear-gradient(90deg, transparent, transparent 29px, rgba(80,80,130,0.08) 30px),#cccce0;}
+h3{font-size:10px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:rgba(40,40,90,0.45);margin-bottom:10px;flex-shrink:0}
+.scene{flex:1;perspective:400px;perspective-origin:50% 50%;position:relative}
+.layer{position:absolute;inset:0;will-change:transform;transition:transform 0.08s ease-out}
+.smoke{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 80%, rgba(200,200,220,0.18) 0%, transparent 70%)}
+.bg-grid{width:100%;height:100%;background-image:linear-gradient(rgba(60,60,120,0.1) 1px,transparent 1px),linear-gradient(90deg,rgba(60,60,120,0.1) 1px,transparent 1px);background-size:20% 25%}
+.big{font-size:44px;font-weight:800;letter-spacing:-0.03em;line-height:1;color:rgba(20,20,60,0.9)}
+.med{font-size:18px;font-weight:600;letter-spacing:0.06em;color:rgba(20,20,80,0.65);text-transform:uppercase}
+.sml{font-size:11px;font-weight:500;letter-spacing:0.1em;color:rgba(20,20,80,0.5);text-transform:uppercase}
+</style></head><body>
+<h3 id="ttl">Donut</h3>
+<div class="scene" id="scene">
+  <div class="layer" id="l0" style="transform:translateZ(-30px)"><div class="bg-grid"></div></div>
+  <div class="layer" id="ls1" style="transform:translateZ(-20px)"><div class="smoke"></div></div>
+  <div class="layer" id="l1" style="transform:translateZ(-10px)">
+    <svg id="donut-shadow" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible"></svg>
+  </div>
+  <div class="layer" id="ls2" style="transform:translateZ(-4px)"><div class="smoke" style="background:radial-gradient(ellipse at 50% 55%,rgba(180,180,210,0.14) 0%,transparent 60%)"></div></div>
+  <div class="layer" id="l2" style="transform:translateZ(0px)">
+    <svg id="donut-main" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible"></svg>
+  </div>
+  <div class="layer" id="l3" style="transform:translateZ(8px)">
+    <div id="center" style="position:absolute;top:50%;left:42%;transform:translate(-50%,-50%);text-align:center;pointer-events:none"></div>
+  </div>
+  <div class="layer" id="l4" style="transform:translateZ(16px)">
+    <div id="legend" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+<script>
+
+const COLORS=['#39FF14','#00B09A','#2B79E0','#E87820','#E84040','#4DC547','#9B59B6'];
+function getMyId(){try{const me=window.frameElement;if(!me)return null;const n=me.closest('[id^="node-"]');return n?n.id.replace('node-',''):null;}catch(e){return null;}}
+function readController(){try{const myId=getMyId();if(myId){const conns=(typeof connections!=='undefined'?connections:[])||(window.parent&&window.parent.connections)||[];for(const c of conns){if(c.from!==myId&&c.to!==myId)continue;const oid=c.from===myId?c.to:c.from;const oNode=window.parent.document.getElementById('node-'+oid);const frame=oNode&&oNode.querySelector('.node-html-frame');const doc=frame&&(frame.contentDocument||(frame.contentWindow&&frame.contentWindow.document));const el=doc&&doc.querySelector('.dc-data');if(el&&el.value){try{return JSON.parse(el.value);}catch(e){}}}}}catch(e){}try{if(window.parent&&window.parent._DC_DATA)return window.parent._DC_DATA;}catch(e){}return null;}
+function showStatus(d){let bar=document.getElementById('_st');if(!bar){bar=document.createElement('div');bar.id='_st';bar.style.cssText='position:fixed;bottom:0;left:0;right:0;font-size:8px;padding:2px 6px;font-family:monospace;opacity:0.55;z-index:999;pointer-events:none';document.body.appendChild(bar);}if(d&&d.rows&&d.rows.length){bar.style.background='rgba(57,255,20,0.1)';bar.style.color='#39FF14';bar.textContent='● '+d.rows.map(r=>r.l+':'+r.a).join(' · ');}else{bar.style.background='rgba(255,255,255,0.04)';bar.style.color='rgba(80,80,130,0.4)';bar.textContent='○ no controller';}}
+let _last=null;
+function poll(){const d=readController();if(JSON.stringify(d)!==JSON.stringify(_last)){_last=d;render();}showStatus(d);}
+setInterval(poll,120);
+try{window.parent.addEventListener('dc:update',()=>{const d=readController();if(d){_last=d;render();}});}catch(e){}
+function getRows(fb){const c=readController();if(c&&c.rows&&c.rows.length)return c.rows.map((r,i)=>({l:r.l,a:r.a,b:r.b||0,col:COLORS[i%COLORS.length]}));return fb.map((d,i)=>({...d,col:COLORS[i%COLORS.length]}));}
+function drawDonut(svgId,rows,shadow){
+  const el=document.getElementById(svgId);el.innerHTML='';
+  const W=el.clientWidth||200,H=el.clientHeight||200;
+  const cx=W*0.42,cy=H*0.5,R=Math.min(W,H)*0.32,ri=R*0.52;
+  const total=rows.reduce((s,r)=>s+r.a,0)||1;
+  let ang=-Math.PI/2;
+  rows.forEach((r,i)=>{
+    const sw=(r.a/total)*Math.PI*2;const a1=ang,a2=ang+sw;const lg=sw>Math.PI?1:0;
+    const oy=shadow?8:0;
+    const ox1=cx+R*Math.cos(a1),oy1=cy+R*Math.sin(a1)+oy;
+    const ox2=cx+R*Math.cos(a2),oy2=cy+R*Math.sin(a2)+oy;
+    const ix1=cx+ri*Math.cos(a2),iy1=cy+ri*Math.sin(a2)+oy;
+    const ix2=cx+ri*Math.cos(a1),iy2=cy+ri*Math.sin(a1)+oy;
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',`M${ox1},${oy1} A${R},${R} 0 ${lg},1 ${ox2},${oy2} L${ix1},${iy1} A${ri},${ri} 0 ${lg},0 ${ix2},${iy2} Z`);
+    p.setAttribute('fill',shadow?'rgba(0,0,0,0.1)':r.col);
+    if(!shadow){p.setAttribute('opacity','0');p.style.transition=`opacity 0.4s ease ${i*0.1}s`;p.style.filter=`drop-shadow(0 4px 8px ${r.col}55)`;}
+    el.appendChild(p);
+    if(!shadow)setTimeout(()=>p.setAttribute('opacity','1'),40);
+    ang=a2;
+  });
+}
+function render(){
+  const rows=getRows([{l:'Watch',a:42},{l:'Share',a:28},{l:'Comment',a:18},{l:'Save',a:12}]);
+  const c=readController();if(c&&c.title)document.getElementById('ttl').textContent=c.title;
+  const total=rows.reduce((s,r)=>s+r.a,0);
+  drawDonut('donut-shadow',rows,true);
+  drawDonut('donut-main',rows,false);
+  document.getElementById('center').innerHTML=`<div class="big">${total}</div><div class="sml">total</div>`;
+  const leg=document.getElementById('legend');leg.innerHTML='';
+  rows.forEach(r=>leg.innerHTML+=`<div style="display:flex;align-items:center;gap:6px">
+    <div style="width:9px;height:9px;border-radius:50%;background:${r.col};flex-shrink:0"></div>
+    <span class="sml">${r.l}</span>
+    <span style="font-size:16px;font-weight:700;color:${r.col}">${r.a}</span>
+  </div>`);
+}
+render();
+
+function setupParallax(layerDefs){
+  let tx=0,ty=0,cx=0,cy=0;
+  document.addEventListener('mousemove',e=>{
+    const r=document.getElementById('scene').getBoundingClientRect();
+    tx=(e.clientX-r.left-r.width/2)/r.width*2;
+    ty=(e.clientY-r.top-r.height/2)/r.height*2;
+  });
+  function loop(){
+    cx+=(tx-cx)*0.08;cy+=(ty-cy)*0.08;
+    layerDefs.forEach(l=>{
+      if(l.el)l.el.style.transform=`translateZ(${l.z}px) translate(${cx*l.rx*18}px,${cy*l.ry*10}px)`;
+    });
+    requestAnimationFrame(loop);
+  }loop();
+}
+setupParallax([
+  {el:document.getElementById('l0'),z:-30,rx:0.6,ry:0.6},
+  {el:document.getElementById('ls1'),z:-20,rx:0.45,ry:0.45},
+  {el:document.getElementById('l1'),z:-10,rx:0.25,ry:0.25},
+  {el:document.getElementById('ls2'),z:-4,rx:0.1,ry:0.1},
+  {el:document.getElementById('l2'),z:0,rx:0,ry:0},
+  {el:document.getElementById('l3'),z:8,rx:-0.1,ry:-0.1},
+  {el:document.getElementById('l4'),z:16,rx:-0.22,ry:-0.22},
+]);
+</script></body></html>

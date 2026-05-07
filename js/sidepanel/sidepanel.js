@@ -8,6 +8,7 @@
     const SNAP_ZONE_PX    = 120;
     const DRAG_THRESHOLD_PX = 4;
     const UNDOCK_HOLD_MS  = 1200;
+    const UNDOCK_EASE_MS  = 80;
 
     let panel, tag, closeBtn;
     let tb;
@@ -29,6 +30,15 @@
 
         tag.addEventListener('click', openPanel);
         closeBtn.addEventListener('click', closePanel);
+
+        document.addEventListener('mousedown', e => {
+            if (isOpen) return;
+            if (e.clientX > HOVER_REVEAL_PX) return;
+            if (!document.body.classList.contains('sp-tag-visible')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            openPanel();
+        }, true);
 
         document.addEventListener('mousemove', e => {
             if (isOpen) return;
@@ -57,6 +67,7 @@
         '28-radial-bar.html',
     ];
     const CHART_DIR = 'Data Gata Charts + Controller/Data Cat Design System (3)/node-charts/';
+    const CHART_TIP_SESSION_KEY = 'sib-chart-picker-tip-seen';
 
     function prettifyChartName(filename) {
         return filename
@@ -72,9 +83,16 @@
         const list    = document.getElementById('cp-list');
         if (!section || !toggle || !list) return;
 
+        const tip = document.createElement('div');
+        tip.className = 'cp-session-tip';
+        tip.textContent = 'Copy and paste in the HTML node, and press play.';
+        section.insertBefore(tip, list);
+
         toggle.addEventListener('click', () => {
             const open = section.classList.toggle('cp-open');
             toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) showChartTipOnce(section);
+            else section.classList.remove('cp-show-tip');
         });
 
         if (location.protocol === 'file:') {
@@ -106,6 +124,12 @@
             frag.appendChild(row);
         });
         list.appendChild(frag);
+    }
+
+    function showChartTipOnce(section) {
+        if (sessionStorage.getItem(CHART_TIP_SESSION_KEY) === '1') return;
+        section.classList.add('cp-show-tip');
+        sessionStorage.setItem(CHART_TIP_SESSION_KEY, '1');
     }
 
     function stripDevInjections(html) {
@@ -262,7 +286,11 @@
         if (!isDocked) return;
         isDocked = false;
         isTucked = false;
+        document.body.classList.add('sp-tb-undocking');
         document.body.classList.remove('sp-tb-docked', 'sp-tb-tucked');
+        window.setTimeout(() => {
+            document.body.classList.remove('sp-tb-undocking');
+        }, UNDOCK_EASE_MS);
         tb.style.left = '';
         tb.style.top = '';
         tb.style.bottom = '';

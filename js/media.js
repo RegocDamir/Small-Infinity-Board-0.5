@@ -394,6 +394,30 @@ function drawLive(canvas, audio, analyser, dataArr) {
     }
 }
 
+function buildYtEmbedUrl(raw) {
+    try {
+        const u = new URL(raw.trim());
+        let vid = null, start = 0;
+        if (u.hostname.includes('youtu.be')) {
+            vid = u.pathname.slice(1).split('?')[0];
+        } else if (u.hostname.includes('youtube.com')) {
+            vid = u.searchParams.get('v');
+        }
+        if (!vid) return null;
+        const t = u.searchParams.get('t') || u.searchParams.get('start') || '0';
+        const m = t.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?/);
+        if (m) start = (parseInt(m[1])||0)*3600 + (parseInt(m[2])||0)*60 + (parseInt(m[3])||0);
+        return `https://www.youtube.com/embed/${vid}?start=${start}&controls=0&rel=0&iv_load_policy=3&modestbranding=1&playsinline=1`;
+    } catch(e) { return null; }
+}
+
+function applyYtUrl(id, raw) {
+    const frame = document.querySelector(`#node-${id} .node-yt-frame`);
+    if (!frame) return;
+    const url = buildYtEmbedUrl(raw || '');
+    if (url) { frame.src = url; saveState(); }
+}
+
 function handleMalikKey(e, input) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();

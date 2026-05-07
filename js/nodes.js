@@ -1,12 +1,17 @@
 // ═══════════════════════════════════════════
 //  CREATE NODE
 // ═══════════════════════════════════════════
+let nodeSeqCounter = 0;
+const _nodeNums = new Map();
+
 function createNode(type, x, y) {
     const id = ++nid;
-    const w = type === 'html' ? 340 : 210;
-    const h = type === 'html' ? 280 : 170;
+    const w = type === 'html' ? 340 : type === 'youtube' ? 320 : 210;
+    const h = type === 'html' ? 280 : type === 'youtube' ? 220 : 170;
     const data = { id, type, x, y, w, h };
     nodes.push(data);
+    const num = ++nodeSeqCounter;
+    _nodeNums.set(id, num);
     mountNode(data);
     return id;
 }
@@ -20,8 +25,11 @@ function mountNode(data) {
     el.style.top = data.y + 'px';
     el.style.width = data.w + 'px';
     el.style.height = data.h + 'px';
+    if (Number.isFinite(parseFloat(data.zIndex))) {
+        el.style.zIndex = data.zIndex;
+    }
 
-    const label = { text: 'TEXT', image: 'IMAGE', video: 'VIDEO', malik: 'MALIK', container: 'GROUP', html: 'HTML' }[data.type] || 'NODE';
+    const label = { text: 'TEXT', image: 'IMAGE', video: 'VIDEO', malik: 'MALIK', container: 'GROUP', html: 'HTML', youtube: 'EMBED YT' }[data.type] || 'NODE';
 
     el.innerHTML = `
     <div class="node-inner">
@@ -45,7 +53,9 @@ ${nodeContent(data.type, data.id)}
       </svg>
     </div>
     <div class="node-corner-icons">
-    <button class="node-corner-icon is-focus" title="Focus this node" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="event.stopPropagation();toggleFocusOrb(${data.id})"><img src="icon-star.svg" alt="" draggable="false"></button>
+    ${_nodeNums.has(data.id) ? `<span class="node-num">${_nodeNums.get(data.id)}</span>` : ''}
+    <button class="node-corner-icon is-focus" title="Focus this node" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="event.stopPropagation();toggleFocusOrb(${data.id})"><img src="Icons SVGs/icon-star.svg" alt="" draggable="false"></button>
+    <button class="node-corner-icon is-z" title="Target for Z-axis" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="event.stopPropagation();activateZTarget(${data.id})">Z</button>
   </div>
     <div class="conn-port port-right"  data-nid="${data.id}" data-side="right"></div>
     <div class="conn-port port-left"   data-nid="${data.id}" data-side="left"></div>
@@ -91,7 +101,7 @@ ${nodeContent(data.type, data.id)}
     }
 
     makeDraggable(el, data);
-    if (data.type !== 'stack') initPorts(el);
+    if (data.type !== 'stack' && typeof initPorts === 'function') initPorts(el);
     initResizeHandles(el, data);
 }
 
@@ -156,6 +166,11 @@ function nodeContent(type, id) {
     <div class="node-html-area">
       <textarea class="node-html-code" placeholder="<!-- HTML / CSS / JS -->" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()" oninput="saveState(true)" onblur="saveState()"></textarea>
       <iframe class="node-html-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+    </div>`;
+    if (type === 'youtube') return `
+    <div class="node-yt-area">
+      <input class="node-yt-input" type="text" placeholder="Paste YouTube URL…" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()" oninput="applyYtUrl(${id},this.value)" onpaste="setTimeout(()=>applyYtUrl(${id},this.value),0)">
+      <iframe class="node-yt-frame" frameborder="0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
     </div>`;
     if (type === 'container') return `<div class="node-container-area"></div>`;
     if (type === 'stack') return `
@@ -233,34 +248,6 @@ function toggleFocusOrb(id) {
 
     // Node canvas position unchanged on enter; only the camera moves.
     animateFocus(data, el, data.x, data.y, newPanX, newPanY, newZoom, 560, easeOutBack);
-}
-
-// Pick a landing spot (node's original canvas size) that doesn't overlap other nodes.
-function findNonOverlappingSpot(id, origX, origY, w, h) {
-    const others = nodes.filter(n => n.id !== id && !_focusOrbState.has(n.id));
-    const pad = 30;
-    const overlaps = (x, y) => others.some(o =>
-        !(x + w + pad <= o.x || x >= o.x + o.w + pad ||
-          y + h + pad <= o.y || y >= o.y + o.h + pad)
-    );
-    const MIN_DIST = Math.max(w, h) * 1.2;
-    const MAX_DIST = Math.max(w, h) * 5 + 800;
-    let best = null, bestScore = Infinity;
-    for (let i = 0; i < 100; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist  = MIN_DIST + Math.random() * (MAX_DIST - MIN_DIST);
-        const x = origX + Math.cos(angle) * dist;
-        const y = origY + Math.sin(angle) * dist;
-        if (!overlaps(x, y)) return { x, y };
-        let score = 0;
-        for (const o of others) {
-            const ox = Math.max(0, Math.min(x + w, o.x + o.w) - Math.max(x, o.x));
-            const oy = Math.max(0, Math.min(y + h, o.y + o.h) - Math.max(y, o.y));
-            score += ox * oy;
-        }
-        if (score < bestScore) { bestScore = score; best = { x, y }; }
-    }
-    return best || { x: origX + 500, y: origY + 500 };
 }
 
 // Eased animation of both node position and camera pan/zoom.
@@ -361,7 +348,7 @@ function makeDraggable(el, data) {
         if (el.classList.contains('node-flipped') && !e.target.closest('.conn-port,.resize-handle')) {
             e.stopPropagation(); e.preventDefault(); flipNode(data, el); return;
         }
-        if (e.target.closest('textarea,input,select,button,.conn-port,.resize-handle,video,.node-img-area,.node-video-area,.node-title')) return;
+        if (e.target.closest('textarea,input,select,button,.conn-port,.resize-handle,video,.node-img-area,.node-video-area,.node-yt-area,.node-title')) return;
         if (flipModeActive) {
             if (data.type === 'stack' || data.type === 'container') return;
             e.stopPropagation(); e.preventDefault();
@@ -371,8 +358,9 @@ function makeDraggable(el, data) {
         }
         if (zoomModeActive && !zoomTarget) { e.stopPropagation(); e.preventDefault(); zoomToNode(data); return; }
         e.stopPropagation(); e.preventDefault();
+        window.sidePanelSelectedNodeId = data.id;
         const sx = e.clientX, sy = e.clientY, sl = data.x, st = data.y;
-        if (data.type !== 'container') { el.style.zIndex = 50; syncEarZ(data, 50); }
+        if (data.type !== 'container') { el.style.zIndex = Math.max(50, parseFloat(data.zIndex) || 0); syncEarZ(data, el.style.zIndex); }
         document.body.classList.add('is-dragging');
 
         // Capture the pointer so events keep firing even if cursor crosses an
@@ -408,7 +396,7 @@ function makeDraggable(el, data) {
         };
         const up = () => {
             if (data.type !== 'container') {
-                const restoreZ = data.parentId ? 5 : '';
+                const restoreZ = Number.isFinite(parseFloat(data.zIndex)) ? data.zIndex : (data.parentId ? 5 : '');
                 el.style.zIndex = restoreZ;
                 syncEarZ(data, restoreZ);
             }

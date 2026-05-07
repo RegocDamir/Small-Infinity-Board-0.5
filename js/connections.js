@@ -47,6 +47,16 @@ function initPorts(el) {
     });
 }
 
+function initExistingConnectionPorts() {
+    document.querySelectorAll('.node').forEach(el => initPorts(el));
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initExistingConnectionPorts, { once: true });
+} else {
+    queueMicrotask(initExistingConnectionPorts);
+}
+
 function finishConnection(e) {
     const mp = clientToScene(e.clientX, e.clientY);
     const target = nodes.find(n => {
@@ -65,7 +75,12 @@ function finishConnection(e) {
 }
 
 function addConnection(fromId, toId, forceId = null) {
-    if (connections.find(c => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId))) return;
+    const duplicate = connections.find(c => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId));
+    if (duplicate) {
+        if (document.getElementById('conn-group-' + duplicate.id)) return;
+        connections = connections.filter(c => c !== duplicate);
+        forceId = forceId || duplicate.id;
+    }
     const id = forceId || ++cid;
     if (id > cid) cid = id;
     const conn = {
@@ -75,11 +90,7 @@ function addConnection(fromId, toId, forceId = null) {
         burstsLeft: Math.floor(Math.random() * 3)
     };
     connections.push(conn);
-    // Live data routing for HTML controller↔graph nodes.
-    // Skip during undo/redo: preserved iframes already hold the latest payload, and
-    // re-firing dc:update would cause charts to re-animate from zero on every undo.
-    // Non-preserved (freshly mounted) iframes still receive data via dcOnGraphPlay
-    // when their iframe load event fires.
+    // Live data routing for HTML controller↔graph nodes
     if (!_inUndoRedo) { try { dcOnConnectionAdded?.(conn); } catch(e) {} }
 
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');

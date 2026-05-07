@@ -1,0 +1,160 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+body{font-family:'Roboto',sans-serif;color:rgba(30,30,60,0.9);padding:16px 16px 24px;display:flex;flex-direction:column;
+background:
+  radial-gradient(ellipse at 25% 70%, rgba(57,255,20,0.12) 0%, transparent 50%),
+  radial-gradient(ellipse at 75% 25%, rgba(43,121,224,0.1) 0%, transparent 50%),
+  repeating-linear-gradient(0deg, transparent, transparent 29px, rgba(80,80,130,0.08) 30px),
+  repeating-linear-gradient(90deg, transparent, transparent 29px, rgba(80,80,130,0.08) 30px),
+  #cccce0;
+}
+h3{font-size:10px;font-weight:500;letter-spacing:0.18em;text-transform:uppercase;color:rgba(40,40,90,0.45);margin-bottom:12px;flex-shrink:0}
+
+/* The scene — perspective container */
+.scene{flex:1;perspective:400px;perspective-origin:50% 50%;position:relative}
+
+/* Each layer is absolutely positioned and gets its own translateZ */
+.layer{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform;transition:transform 0.08s ease-out}
+
+/* Smoke/haze layers between depths */
+.smoke{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 80%, rgba(200,200,220,0.18) 0%, transparent 70%)}
+
+/* Layer 0 — background grid (deepest) */
+.bg-grid{width:100%;height:100%;
+  background-image:
+    linear-gradient(rgba(60,60,120,0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(60,60,120,0.1) 1px, transparent 1px);
+  background-size:20% 25%;
+  box-shadow:0 8px 32px rgba(0,0,0,0.15)}
+
+/* Layer 1 — axis lines */
+.axis{position:absolute;bottom:22px;left:10px;right:8px;height:1px;background:rgba(40,40,100,0.25)}
+.axis::before{content:'';position:absolute;left:0;bottom:0;top:-120px;width:1px;background:rgba(40,40,100,0.15)}
+
+/* Layer 2 — bar shadows (cast on floor) */
+.shadow-row{position:absolute;bottom:32px;left:8px;right:8px;display:flex;align-items:flex-end;gap:20px;height:1px}
+.bar-shadow{flex:1;height:10px;border-radius:50%;filter:blur(7px);opacity:0.45;margin-top:-5px}
+
+/* Layer 3 — bars themselves */
+.bars-row{position:absolute;bottom:32px;left:8px;right:8px;display:flex;align-items:flex-end;gap:20px;filter:drop-shadow(0 6px 10px rgba(0,0,0,0.25))}
+
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 12px}
+.bar{width:100%;border-radius:3px 3px 0 0;transition:height 0.9s cubic-bezier(.4,0,.2,1)}
+.val{font-size:48px;color:rgba(20,20,60,0.9);font-weight:800;letter-spacing:-0.03em;line-height:1}
+
+/* Layer 4 — labels (foreground) */
+.labels-row{position:absolute;bottom:4px;left:8px;right:8px;display:flex;gap:20px;filter:drop-shadow(0 1px 3px rgba(255,255,255,0.8))}
+.lbl{flex:1;font-size:18px;color:rgba(20,20,80,0.65);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:0.08em;font-weight:600;text-transform:uppercase}
+</style></head><body>
+<h3 id="ttl">Bar Chart</h3>
+<div class="scene" id="scene">
+
+  <!-- Layer 0: Background grid — deepest -->
+  <div class="layer" id="l0" style="transform:translateZ(-30px)">
+    <div class="bg-grid"></div>
+  </div>
+
+  <!-- Smoke haze 1 — between grid and axis -->
+  <div class="layer" id="ls1" style="transform:translateZ(-22px)">
+    <div class="smoke"></div>
+  </div>
+
+  <!-- Layer 1: Axis -->
+  <div class="layer" id="l1" style="transform:translateZ(-15px)">
+    <div class="axis"></div>
+  </div>
+
+  <!-- Smoke haze 2 — between axis and bars -->
+  <div class="layer" id="ls2" style="transform:translateZ(-5px)">
+    <div class="smoke" style="background:radial-gradient(ellipse at 50% 100%, rgba(180,180,210,0.12) 0%, transparent 65%)"></div>
+  </div>
+
+  <!-- Layer 2: Shadows on floor -->
+  <div class="layer" id="l2" style="transform:translateZ(-8px)">
+    <div class="shadow-row" id="shadows"></div>
+  </div>
+
+  <!-- Layer 3: Bars -->
+  <div class="layer" id="l3" style="transform:translateZ(0px)">
+    <div class="bars-row" id="bars"></div>
+  </div>
+
+  <!-- Layer 4: Labels — closest -->
+  <div class="layer" id="l4" style="transform:translateZ(14px)">
+    <div class="labels-row" id="labels"></div>
+  </div>
+
+</div>
+
+<script>
+const COLORS=['#39FF14','#00B09A','#2B79E0','#E87820','#E84040','#4DC547','#9B59B6','#F5F0D8'];
+function getMyId(){try{const me=window.frameElement;if(!me)return null;const n=me.closest('[id^="node-"]');return n?n.id.replace('node-',''):null;}catch(e){return null;}}
+function readController(){try{const myId=getMyId();if(myId){const conns=(typeof connections!=='undefined'?connections:[])||(window.parent&&window.parent.connections)||[];for(const c of conns){if(c.from!==myId&&c.to!==myId)continue;const oid=c.from===myId?c.to:c.from;const oNode=window.parent.document.getElementById('node-'+oid);const frame=oNode&&oNode.querySelector('.node-html-frame');const doc=frame&&(frame.contentDocument||(frame.contentWindow&&frame.contentWindow.document));const el=doc&&doc.querySelector('.dc-data');if(el&&el.value){try{return JSON.parse(el.value);}catch(e){}}}}}catch(e){}try{if(window.parent&&window.parent._DC_DATA)return window.parent._DC_DATA;}catch(e){}return null;}
+function showStatus(d){let bar=document.getElementById('_st');if(!bar){bar=document.createElement('div');bar.id='_st';bar.style.cssText='position:fixed;bottom:0;left:0;right:0;font-size:8px;padding:2px 6px;font-family:monospace;opacity:0.6;z-index:999;pointer-events:none';document.body.appendChild(bar);}if(d&&d.rows&&d.rows.length){bar.style.background='rgba(57,255,20,0.1)';bar.style.color='#39FF14';bar.textContent='● '+d.rows.map(r=>r.l+':'+r.a).join(' · ');}else{bar.style.background='rgba(255,255,255,0.04)';bar.style.color='rgba(255,255,255,0.2)';bar.textContent='○ no controller';}}
+let _last=null;
+function poll(){const d=readController();if(JSON.stringify(d)!==JSON.stringify(_last)){_last=d;render();}showStatus(d);}
+setInterval(poll,120);
+try{window.parent.addEventListener('dc:update',()=>{const d=readController();if(d){_last=d;render();}});}catch(e){}
+function getRows(){const c=readController();if(c&&c.rows&&c.rows.length)return c.rows.map((r,i)=>({l:r.l,v:r.a,col:COLORS[i%COLORS.length]}));return[{l:'Alpha',v:80},{l:'Beta',v:65},{l:'Gamma',v:91},{l:'Delta',v:44},{l:'Epsilon',v:73}].map((d,i)=>({...d,col:COLORS[i%COLORS.length]}));}
+
+function render(){
+  const rows=getRows();
+  const c=readController();if(c&&c.title)document.getElementById('ttl').textContent=c.title;
+  const max=Math.max(...rows.map(r=>r.v),1);
+  const sceneH=document.getElementById('scene').offsetHeight-46;
+
+  // Bars
+  const barsEl=document.getElementById('bars');
+  barsEl.innerHTML='';
+  rows.forEach(r=>{
+    const h=Math.round((r.v/max)*sceneH*0.88);
+    barsEl.innerHTML+=`<div class="bar-col">
+      <div class="val">${r.v}</div>
+      <div class="bar" style="height:0;background:${r.col};box-shadow:0 0 12px ${r.col}66" data-h="${h}px"></div>
+    </div>`;
+  });
+  setTimeout(()=>document.querySelectorAll('.bar[data-h]').forEach(b=>{b.style.height=b.dataset.h;}),30);
+
+  // Shadows
+  const shadowEl=document.getElementById('shadows');
+  shadowEl.innerHTML='';
+  rows.forEach(r=>{shadowEl.innerHTML+=`<div class="bar-shadow" style="background:${r.col}"></div>`;});
+
+  // Labels
+  const labelsEl=document.getElementById('labels');
+  labelsEl.innerHTML='';
+  rows.forEach(r=>{labelsEl.innerHTML+=`<div class="lbl">${r.l}</div>`;});
+}
+render();
+
+// Parallax: different layers shift at different rates on mouse move
+const layers=[
+  {el:document.getElementById('l0'),  z:-30, rx:0.6,  ry:0.6},
+  {el:document.getElementById('ls1'), z:-22, rx:0.48, ry:0.48},
+  {el:document.getElementById('l1'),  z:-15, rx:0.35, ry:0.35},
+  {el:document.getElementById('ls2'), z:-5,  rx:0.12, ry:0.12},
+  {el:document.getElementById('l2'),  z:-8,  rx:0.18, ry:0.18},
+  {el:document.getElementById('l3'),  z:0,   rx:0.0,  ry:0.0},
+  {el:document.getElementById('l4'),  z:14,  rx:-0.2, ry:-0.2},
+];
+let targetX=0,targetY=0,curX=0,curY=0;
+document.addEventListener('mousemove',e=>{
+  const r=document.getElementById('scene').getBoundingClientRect();
+  targetX=(e.clientX-r.left-r.width/2)/r.width*2;
+  targetY=(e.clientY-r.top-r.height/2)/r.height*2;
+});
+function animParallax(){
+  curX+=(targetX-curX)*0.08;
+  curY+=(targetY-curY)*0.08;
+  layers.forEach(l=>{
+    const tx=curX*l.rx*18;
+    const ty=curY*l.ry*10;
+    l.el.style.transform=`translateZ(${l.z}px) translate(${tx}px,${ty}px)`;
+  });
+  requestAnimationFrame(animParallax);
+}
+animParallax();
+</script></body></html>

@@ -9,8 +9,20 @@ let selecting = false, selStart = { x: 0, y: 0 };
 const selBox = document.getElementById('selection-box');
 
 wrap.addEventListener('mousedown', e => {
-    if (e.target.closest('.node,.node-inner,#toolbar,#ctx-menu')) return;
-    if (addMode === 'text') return;
+    if (e.target.closest('.node,.node-inner,#toolbar,#ctx-menu,.camera-path-point,.camera-path-ramp,.camera-path-ramp-handle')) return;
+    if (cameraPathRampPlacing && e.button === 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        addCameraPathRampAt(e.clientX, e.clientY);
+        return;
+    }
+    if (cameraPathDrawing && e.button === 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        addCameraPathPoint(e.clientX, e.clientY);
+        return;
+    }
+    if (addMode === 'text' || addMode === 'text-layer') return;
     // Middle click (button 1) while group add mode is active starts selection
     if (e.button === 1 && addMode === 'group') {
         selecting = true;
@@ -199,6 +211,8 @@ function updateAllEarScales() {
 
 function applyTransform() {
     scene.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${zoom})`;
+    const gridEl = document.getElementById('dot-grid');
+    if (gridEl) gridEl.style.transform = '';
     document.documentElement.style.setProperty('--zoom-inv', zoom < 1 ? 1 / Math.pow(zoom, 0.6) : (zoom > 1 ? 1 / Math.pow(zoom, 0.6) : 1));
     document.documentElement.style.setProperty('--zoom', zoom);
     document.documentElement.style.setProperty('--ear-counter', zoom < 1 ? (1 / zoom).toFixed(5) : 1);
@@ -210,9 +224,13 @@ function updateDotGrid() {
     let deceptiveZoom = zoom;
     if (zoom < 1) deceptiveZoom = Math.pow(zoom, 0.65);
 
-    const s = 32 * deceptiveZoom;
-    const ox = ((pan.x % s) + s) % s, oy = ((pan.y % s) + s) % s;
     const gridEl = document.getElementById('dot-grid');
+    const styles = getComputedStyle(document.documentElement);
+    const baseGridSize = parseFloat(styles.getPropertyValue('--grid-size')) || 32;
+    const baseDotSize = parseFloat(styles.getPropertyValue('--dot-size')) || 1.5;
+
+    const s = baseGridSize * deceptiveZoom;
+    const ox = ((pan.x % s) + s) % s, oy = ((pan.y % s) + s) % s;
 
     gridEl.style.backgroundSize = `${s}px ${s}px`;
     gridEl.style.backgroundPosition = `${ox}px ${oy}px`;
@@ -227,8 +245,8 @@ function updateDotGrid() {
     gridEl.style.opacity = Math.max(0.6, Math.min(1, opacity));
 
     // Adjust the dot radius size visually
-    const dotSize = Math.max(1, 1.5 * deceptiveZoom);
-    gridEl.style.backgroundImage = `radial-gradient(circle, var(--dot-color) ${dotSize}px, transparent ${dotSize}px)`;
+    const dotSize = Math.max(1, baseDotSize * deceptiveZoom);
+    gridEl.style.backgroundImage = `radial-gradient(circle, var(--dot-color) ${dotSize}px, transparent 0)`;
 
     // ── Animate-mode tiled background: pan fully, zoom as parallax ──
     const animBg = document.getElementById('anim-bg');
@@ -248,6 +266,561 @@ function clientToScene(cx, cy) {
     const r = wrap.getBoundingClientRect();
     return { x: (cx - r.left - pan.x) / zoom, y: (cy - r.top - pan.y) / zoom };
 }
+
+let cameraPathDrawing = false;
+let cameraPathRaf = null;
+let cameraPathTurnAngle = null;
+let cameraPathDrag = null;
+let cameraPathPaused = false;
+let cameraPathPlaybackDistance = 0;
+let cameraPathRampPlacing = false;
+let selectedCameraPathRampId = null;
+
+function ensureCameraPath() {
+    cameraPath = typeof normalizeCameraPath === 'function'
+        ? normalizeCameraPath(cameraPath)
+        : (cameraPath || { points: [], speed: 120, turnWithPath: false, ramps: [], visible: true });
+    return cameraPath;
+}
+
+function syncCameraPathVisibilityToggle() {
+    const button = document.getElementById('cam-path-visibility');
+    if (!button) return;
+    const visible = cameraPath?.visible !== false;
+    button.classList.toggle('is-hidden', !visible);
+    button.setAttribute('aria-pressed', String(visible));
+    button.title = visible ? 'Hide camera path' : 'Show camera path';
+}
+
+function toggleCameraPathVisibility() {
+    cameraPath = ensureCameraPath();
+    cameraPath.visible = cameraPath.visible === false;
+    syncCameraPathVisibilityToggle();
+    renderCameraPath();
+    saveState(true);
+}
+
+function toggleCameraPathDraw() {
+    cameraPathDrawing = !cameraPathDrawing;
+    cameraPathRampPlacing = false;
+    document.getElementById('cam-draw-path')?.classList.toggle('active', cameraPathDrawing);
+    document.getElementById('cam-add-ramp')?.classList.remove('active');
+    setAddMode(null);
+}
+
+function finishCameraPathDraw() {
+    cameraPathDrawing = false;
+    document.getElementById('cam-draw-path')?.classList.remove('active');
+    saveState();
+}
+
+function addCameraPathPoint(clientX, clientY) {
+    cameraPath = ensureCameraPath();
+    cameraPath.points = cameraPath.points || [];
+    cameraPath.points.push(clientToScene(clientX, clientY));
+    renderCameraPath();
+    saveState(true);
+}
+
+function clearCameraPath() {
+    stopCameraPath();
+    cameraPathPaused = false;
+    selectedCameraPathRampId = null;
+    cameraPathRampPlacing = false;
+    document.getElementById('cam-add-ramp')?.classList.remove('active');
+    cameraPath = {
+        points: [],
+        speed: cameraPath?.speed || 120,
+        turnWithPath: !!cameraPath?.turnWithPath,
+        ramps: [],
+        visible: cameraPath?.visible !== false
+    };
+    renderCameraPath();
+    saveState();
+}
+
+function updateCameraPathSpeed(value) {
+    cameraPath = ensureCameraPath();
+    cameraPath.speed = parseFloat(value) || 120;
+    syncCameraSpeedIconGlow();
+    saveState(true);
+}
+
+function syncRangeEndpointGlow(sliderId, wrapSelector) {
+    const slider = document.getElementById(sliderId);
+    const wrap = slider?.closest(wrapSelector);
+    if (!slider || !wrap) return;
+    const min = parseFloat(slider.min);
+    const max = parseFloat(slider.max);
+    const value = parseFloat(slider.value);
+    const pct = Number.isFinite(min) && Number.isFinite(max) && max > min && Number.isFinite(value)
+        ? Math.max(0, Math.min(1, (value - min) / (max - min)))
+        : 0;
+    wrap.style.setProperty('--snail-glow', (1 - pct).toFixed(3));
+    wrap.style.setProperty('--rabbit-glow', pct.toFixed(3));
+    wrap.classList.toggle('is-snail-active', pct <= 0.5);
+    wrap.classList.toggle('is-rabbit-active', pct > 0.5);
+}
+
+function syncCameraSpeedIconGlow() {
+    syncRangeEndpointGlow('cam-speed', '.cam-speed-wrap');
+}
+
+function syncCameraRampSpeedIconGlow() {
+    syncRangeEndpointGlow('cam-ramp-value', '.cam-ramp-speed-wrap');
+}
+
+function updateCameraPathTurns(checked) {
+    cameraPath = ensureCameraPath();
+    cameraPath.turnWithPath = !!checked;
+    saveState(true);
+}
+
+function toggleCameraPathRampPlace() {
+    cameraPath = ensureCameraPath();
+    cameraPathRampPlacing = !cameraPathRampPlacing;
+    cameraPathDrawing = false;
+    document.getElementById('cam-add-ramp')?.classList.toggle('active', cameraPathRampPlacing);
+    document.getElementById('cam-draw-path')?.classList.remove('active');
+    setAddMode(null);
+}
+
+function updateCameraPathRampValue(value) {
+    cameraPath = ensureCameraPath();
+    const sliderValue = parseFloat(value);
+    if (!Number.isFinite(sliderValue)) return;
+    const ramp = (cameraPath.ramps || []).find(r => r.id === selectedCameraPathRampId);
+    if (ramp) {
+        ramp.value = Math.max(0.2, Math.min(3, sliderValue));
+        syncCameraRampSpeedIconGlow();
+        renderCameraPath();
+        saveState(true);
+    }
+}
+
+function renderCameraPath() {
+    if (!svgEl) return;
+    svgEl.querySelectorAll('.camera-path-line,.camera-path-line-glow,.camera-path-point,.camera-path-ramp,.camera-path-ramp-handle').forEach(el => el.remove());
+    cameraPath = ensureCameraPath();
+    const pts = cameraPath?.points || [];
+    syncCameraPathVisibilityToggle();
+    if (!pts.length) return;
+    if (cameraPath.visible === false) return;
+    const samples = sampleCameraPath(pts);
+    const totalDist = samples[samples.length - 1]?.dist || 0;
+
+    const glowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    glowPath.classList.add('camera-path-line-glow');
+    glowPath.setAttribute('d', cameraPathD(pts));
+    glowPath.setAttribute('transform', 'translate(10000 10000)');
+    svgEl.prepend(glowPath);
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.classList.add('camera-path-line');
+    path.setAttribute('d', cameraPathD(pts));
+    path.setAttribute('transform', 'translate(10000 10000)');
+    svgEl.insertBefore(path, glowPath.nextSibling);
+
+    (cameraPath.ramps || []).forEach(ramp => {
+        if (!totalDist) return;
+        ramp.start = Math.max(0, Math.min(totalDist, parseFloat(ramp.start) || 0));
+        ramp.end = Math.max(0, Math.min(totalDist, parseFloat(ramp.end) || 0));
+        if (ramp.end < ramp.start) [ramp.start, ramp.end] = [ramp.end, ramp.start];
+        const d = cameraPathSegmentD(samples, ramp.start, ramp.end);
+        if (!d) return;
+        const rampPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        rampPath.classList.add('camera-path-ramp');
+        if (ramp.id === selectedCameraPathRampId) rampPath.classList.add('is-selected');
+        rampPath.setAttribute('d', d);
+        rampPath.setAttribute('stroke', cameraPathRampColor(ramp.value));
+        rampPath.setAttribute('transform', 'translate(10000 10000)');
+        rampPath.dataset.id = ramp.id;
+        rampPath.addEventListener('pointerdown', selectCameraPathRamp);
+        svgEl.appendChild(rampPath);
+
+        [['start', ramp.start], ['end', ramp.end]].forEach(([edge, dist]) => {
+            const pt = pointAtDistance(samples, dist);
+            const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            handle.classList.add('camera-path-ramp-handle');
+            handle.setAttribute('cx', pt.x);
+            handle.setAttribute('cy', pt.y);
+            handle.setAttribute('r', 6.5);
+            handle.setAttribute('transform', 'translate(10000 10000)');
+            handle.dataset.id = ramp.id;
+            handle.dataset.edge = edge;
+            handle.addEventListener('pointerdown', startCameraPathRampHandleDrag);
+            svgEl.appendChild(handle);
+        });
+    });
+
+    pts.forEach((pt, index) => {
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.classList.add('camera-path-point');
+        dot.setAttribute('cx', pt.x);
+        dot.setAttribute('cy', pt.y);
+        dot.setAttribute('r', index === 0 ? 8 : 6);
+        dot.setAttribute('transform', 'translate(10000 10000)');
+        dot.dataset.index = index;
+        dot.addEventListener('pointerdown', startCameraPathPointDrag);
+        svgEl.appendChild(dot);
+    });
+
+    const speed = document.getElementById('cam-speed');
+    if (speed) {
+        speed.value = cameraPath?.speed || 120;
+        syncCameraSpeedIconGlow();
+    }
+    const turns = document.getElementById('cam-turns');
+    if (turns) turns.checked = !!cameraPath?.turnWithPath;
+    syncCameraPathRampControls();
+}
+
+function startCameraPathPointDrag(e) {
+    if (cameraPathRaf) return;
+    const index = parseInt(e.currentTarget.dataset.index, 10);
+    if (!Number.isFinite(index)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    finishCameraPathDraw();
+    cameraPathDrag = { index };
+    e.currentTarget.classList.add('is-dragging');
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+}
+
+window.addEventListener('pointermove', e => {
+    if (!cameraPathDrag) return;
+    e.preventDefault();
+    if (cameraPathDrag.rampId) {
+        dragCameraPathRampHandle(e);
+        return;
+    }
+    const pts = cameraPath?.points || [];
+    const index = cameraPathDrag.index;
+    if (!pts[index]) return;
+    pts[index] = clientToScene(e.clientX, e.clientY);
+    renderCameraPath();
+});
+
+window.addEventListener('pointerup', e => {
+    if (!cameraPathDrag) return;
+    e.preventDefault();
+    cameraPathDrag = null;
+    renderCameraPath();
+    saveState(true);
+});
+
+function addCameraPathRampAt(clientX, clientY) {
+    cameraPath = ensureCameraPath();
+    const pts = cameraPath.points || [];
+    if (pts.length < 2) return;
+    const samples = sampleCameraPath(pts);
+    const total = samples[samples.length - 1]?.dist || 0;
+    if (!total) return;
+    const scenePt = clientToScene(clientX, clientY);
+    const nearest = nearestCameraPathDistance(samples, scenePt);
+    const tolerance = Math.max(26, 34 / Math.max(zoom, 0.35));
+    if (!nearest || nearest.gap > tolerance) return;
+    const len = Math.max(120, Math.min(420, total * 0.16));
+    const start = Math.max(0, nearest.dist - len / 2);
+    const end = Math.min(total, nearest.dist + len / 2);
+    const ramp = {
+        id: `ramp-${Date.now()}-${Math.round(Math.random() * 10000)}`,
+        start,
+        end,
+        value: 1.5
+    };
+    cameraPath.ramps.push(ramp);
+    selectedCameraPathRampId = ramp.id;
+    cameraPathRampPlacing = false;
+    document.getElementById('cam-add-ramp')?.classList.remove('active');
+    renderCameraPath();
+    saveState(true);
+}
+
+function selectCameraPathRamp(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    selectedCameraPathRampId = e.currentTarget.dataset.id;
+    syncCameraPathRampControls();
+    renderCameraPath();
+}
+
+function startCameraPathRampHandleDrag(e) {
+    if (cameraPathRaf) return;
+    e.preventDefault();
+    e.stopPropagation();
+    finishCameraPathDraw();
+    cameraPathRampPlacing = false;
+    document.getElementById('cam-add-ramp')?.classList.remove('active');
+    selectedCameraPathRampId = e.currentTarget.dataset.id;
+    cameraPathDrag = { rampId: selectedCameraPathRampId, edge: e.currentTarget.dataset.edge };
+    e.currentTarget.classList.add('is-dragging');
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+}
+
+function dragCameraPathRampHandle(e) {
+    cameraPath = ensureCameraPath();
+    const ramp = cameraPath.ramps.find(r => r.id === cameraPathDrag.rampId);
+    if (!ramp) return;
+    const samples = sampleCameraPath(cameraPath.points || []);
+    const total = samples[samples.length - 1]?.dist || 0;
+    if (!total) return;
+    const nearest = nearestCameraPathDistance(samples, clientToScene(e.clientX, e.clientY));
+    const minLen = Math.max(40, total * 0.015);
+    if (cameraPathDrag.edge === 'start') {
+        ramp.start = Math.max(0, Math.min(nearest.dist, ramp.end - minLen));
+    } else {
+        ramp.end = Math.min(total, Math.max(nearest.dist, ramp.start + minLen));
+    }
+    renderCameraPath();
+}
+
+function syncCameraPathRampControls() {
+    const slider = document.getElementById('cam-ramp-value');
+    if (!slider) return;
+    const ramp = (cameraPath?.ramps || []).find(r => r.id === selectedCameraPathRampId);
+    slider.disabled = !ramp;
+    slider.value = ramp ? (parseFloat(ramp.value) || 1.5) : 1.5;
+    syncCameraRampSpeedIconGlow();
+}
+
+window.addEventListener('pointercancel', () => {
+    if (!cameraPathDrag) return;
+    cameraPathDrag = null;
+    renderCameraPath();
+    saveState(true);
+});
+
+function cameraPathD(points) {
+    if (points.length === 1) return `M${points[0].x},${points[0].y}`;
+    if (points.length === 2) return `M${points[0].x},${points[0].y} L${points[1].x},${points[1].y}`;
+    let d = `M${points[0].x},${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[Math.max(0, i - 1)];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const p3 = points[Math.min(points.length - 1, i + 2)];
+        const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+        const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+        d += ` C${c1.x},${c1.y} ${c2.x},${c2.y} ${p2.x},${p2.y}`;
+    }
+    return d;
+}
+
+function cameraPathSegmentD(samples, startDist, endDist) {
+    if (!samples || samples.length < 2 || endDist <= startDist) return '';
+    const pts = [pointAtDistance(samples, startDist)];
+    samples.forEach(sample => {
+        if (sample.dist > startDist && sample.dist < endDist) pts.push(sample);
+    });
+    pts.push(pointAtDistance(samples, endDist));
+    return pts.map((pt, index) => `${index ? 'L' : 'M'}${pt.x},${pt.y}`).join(' ');
+}
+
+function cameraPathRampColor(value) {
+    const v = parseFloat(value) || 1;
+    if (v >= 1) {
+        const t = Math.min(1, (v - 1) / 1.5);
+        return `rgb(255, ${Math.round(117 * (1 - t) + 45 * t)}, ${Math.round(31 * (1 - t))})`;
+    }
+    const t = Math.min(1, (1 - v) / 0.8);
+    return `rgb(${Math.round(255 * (1 - t) + 34 * t)}, ${Math.round(117 * (1 - t) + 197 * t)}, ${Math.round(31 * (1 - t) + 94 * t)})`;
+}
+
+function playCameraPath() {
+    const pts = cameraPath?.points || [];
+    if (pts.length < 2) return;
+    if (cameraPathRaf) return;
+    cameraPathPaused = false;
+    finishCameraPathDraw();
+    const samples = sampleCameraPath(pts);
+    if (samples.length < 2) return;
+    const speed = Math.max(40, parseFloat(cameraPath.speed) || 120);
+    const totalDist = samples[samples.length - 1].dist;
+    let distance = Math.max(0, Math.min(totalDist, cameraPathPlaybackDistance || 0));
+    let lastFrameTime = performance.now();
+    cameraPathTurnAngle = null;
+
+    const step = now => {
+        const dt = Math.max(0, now - lastFrameTime);
+        lastFrameTime = now;
+        distance = Math.min(totalDist, distance + (dt / 1000) * speed * cameraPathSpeedMultiplierAt(distance));
+        cameraPathPlaybackDistance = distance;
+        const target = pointAtDistance(samples, distance);
+        target.angle = cameraPathLocalAngle(samples, distance);
+        target.turnDt = dt;
+        applyCameraPathView(target);
+        if (distance < totalDist) {
+            cameraPathRaf = requestAnimationFrame(step);
+        } else {
+            cameraPathRaf = null;
+            cameraPathTurnAngle = null;
+            cameraPathPaused = false;
+            cameraPathPlaybackDistance = 0;
+            if (cameraPath?.turnWithPath) {
+                applyTransform();
+                updateDotGrid();
+                redrawConnections();
+            }
+            saveState(true);
+        }
+    };
+    cameraPathRaf = requestAnimationFrame(step);
+}
+
+function cameraPathSpeedMultiplierAt(distance) {
+    const ramps = cameraPath?.ramps || [];
+    let multiplier = 1;
+    ramps.forEach(ramp => {
+        const start = Math.min(parseFloat(ramp.start) || 0, parseFloat(ramp.end) || 0);
+        const end = Math.max(parseFloat(ramp.start) || 0, parseFloat(ramp.end) || 0);
+        if (end <= start || distance < start || distance > end) return;
+        const local = (distance - start) / (end - start);
+        const eased = Math.sin(Math.PI * local);
+        const value = Math.max(0.2, Math.min(3, parseFloat(ramp.value) || 1));
+        multiplier *= 1 + (value - 1) * eased;
+    });
+    return Math.max(0.15, Math.min(4, multiplier));
+}
+
+function stopCameraPath(useNormalTransform = true) {
+    if (cameraPathRaf) cancelAnimationFrame(cameraPathRaf);
+    cameraPathRaf = null;
+    cameraPathTurnAngle = null;
+    cameraPathPaused = false;
+    cameraPathPlaybackDistance = 0;
+    if (useNormalTransform) {
+        applyTransform();
+        updateDotGrid();
+    }
+}
+
+function pausePlayCameraPath() {
+    if (cameraPathRaf) {
+        cancelAnimationFrame(cameraPathRaf);
+        cameraPathRaf = null;
+        cameraPathTurnAngle = null;
+        cameraPathPaused = true;
+        saveState(true);
+        return;
+    }
+    if (cameraPathPaused) {
+        playCameraPath();
+    }
+}
+
+function sampleCameraPath(points) {
+    const samples = [];
+    let prev = null;
+    let total = 0;
+    const stepsPerSegment = 28;
+    for (let i = 0; i < points.length - 1; i++) {
+        for (let s = 0; s <= stepsPerSegment; s++) {
+            if (i > 0 && s === 0) continue;
+            const p = catmullPoint(points, i, s / stepsPerSegment);
+            if (prev) total += Math.hypot(p.x - prev.x, p.y - prev.y);
+            samples.push({ ...p, dist: total });
+            prev = p;
+        }
+    }
+    return samples;
+}
+
+function catmullPoint(points, i, t) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return {
+        x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+        y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+    };
+}
+
+function pointAtDistance(samples, distance) {
+    let i = 1;
+    while (i < samples.length && samples[i].dist < distance) i++;
+    const a = samples[Math.max(0, i - 1)];
+    const b = samples[Math.min(samples.length - 1, i)];
+    const span = Math.max(1, b.dist - a.dist);
+    const t = Math.max(0, Math.min(1, (distance - a.dist) / span));
+    return {
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+        angle: Math.atan2(b.y - a.y, b.x - a.x)
+    };
+}
+
+function nearestCameraPathDistance(samples, pt) {
+    if (!samples || samples.length < 2 || !pt) return null;
+    let best = null;
+    for (let i = 1; i < samples.length; i++) {
+        const a = samples[i - 1];
+        const b = samples[i];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / len2));
+        const x = a.x + dx * t;
+        const y = a.y + dy * t;
+        const gap = Math.hypot(pt.x - x, pt.y - y);
+        const dist = a.dist + (b.dist - a.dist) * t;
+        if (!best || gap < best.gap) best = { dist, gap };
+    }
+    return best;
+}
+
+function cameraPathLocalAngle(samples, distance) {
+    if (!samples || samples.length < 2) return 0;
+    const total = samples[samples.length - 1].dist;
+    const viewSpan = Math.hypot(window.innerWidth, window.innerHeight) / Math.max(zoom, 0.1);
+    const halfWindow = Math.max(220, Math.min(1400, viewSpan * 0.45, total * 0.22));
+    const before = pointAtDistance(samples, Math.max(0, distance - halfWindow));
+    const after = pointAtDistance(samples, Math.min(total, distance + halfWindow));
+
+    let vx = after.x - before.x;
+    let vy = after.y - before.y;
+    if (Math.hypot(vx, vy) < 1) {
+        const nearBefore = pointAtDistance(samples, Math.max(0, distance - 12));
+        const nearAfter = pointAtDistance(samples, Math.min(total, distance + 12));
+        vx = nearAfter.x - nearBefore.x;
+        vy = nearAfter.y - nearBefore.y;
+    }
+    return Math.atan2(vy, vx);
+}
+
+function dampCameraPathTurn(targetAngle, dt) {
+    if (cameraPathTurnAngle == null) {
+        cameraPathTurnAngle = targetAngle;
+        return cameraPathTurnAngle;
+    }
+    const delta = Math.atan2(Math.sin(targetAngle - cameraPathTurnAngle), Math.cos(targetAngle - cameraPathTurnAngle));
+    const damping = 1 - Math.exp(-Math.max(dt, 16) / 520);
+    cameraPathTurnAngle += delta * damping;
+    return cameraPathTurnAngle;
+}
+
+function applyCameraPathView(target) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    pan.x = vw / 2 - target.x * zoom;
+    pan.y = vh / 2 - target.y * zoom;
+    if (cameraPath?.turnWithPath) {
+        const smoothedAngle = dampCameraPathTurn(target.angle || 0, target.turnDt || 16);
+        const deg = -90 - smoothedAngle * 180 / Math.PI;
+        scene.style.transform = `translate(${vw / 2}px,${vh / 2}px) rotate(${deg}deg) scale(${zoom}) translate(${-target.x}px,${-target.y}px)`;
+        const gridEl = document.getElementById('dot-grid');
+        if (gridEl) gridEl.style.transform = `rotate(${deg}deg)`;
+        document.documentElement.style.setProperty('--zoom', zoom);
+    } else {
+        applyTransform();
+    }
+    updateDotGrid();
+    redrawConnections();
+}
+
 function resetView() {
     if (nodes.length === 0) {
         pan = { x: 0, y: 0 }; zoom = 1;
@@ -347,6 +920,7 @@ function setAddMode(type) {
 function openCtx(e, id) {
     e.stopPropagation();
     ctxTarget = id;
+    window.sidePanelSelectedNodeId = id;
     ctxMenu.style.display = 'block';
     // Clamp so the menu never overflows off-screen
     const mw = ctxMenu.offsetWidth, mh = ctxMenu.offsetHeight;
@@ -357,6 +931,99 @@ function openCtx(e, id) {
     ctxMenu.style.top = cy + 'px';
 }
 document.addEventListener('click', e => { if (!e.target.closest('#ctx-menu')) ctxMenu.style.display = 'none'; });
+
+function _zFlash(btn, cls, duration) {
+    if (!btn) return;
+    btn.classList.remove(cls);
+    void btn.offsetWidth;
+    btn.classList.add(cls);
+    setTimeout(() => btn.classList.remove(cls), duration);
+}
+
+function activateZTarget(id) {
+    const prevBtn = document.querySelector('.node-corner-icon.is-z.active');
+    const alreadyActive = prevBtn && prevBtn.closest('.node')?.id === 'node-' + id;
+
+    document.querySelectorAll('.node-corner-icon.is-z.active').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.node.z-targeted').forEach(n => n.classList.remove('z-targeted'));
+
+    if (!alreadyActive) {
+        window.sidePanelSelectedNodeId = id;
+        const nodeEl = document.getElementById('node-' + id);
+        const zBtn = nodeEl?.querySelector('.is-z');
+        zBtn?.classList.add('active');
+        nodeEl?.classList.add('z-targeted');
+        _zFlash(zBtn, 'z-flash', 120);
+    } else {
+        window.sidePanelSelectedNodeId = null;
+    }
+}
+
+document.addEventListener('click', e => {
+    if (e.target.closest('.sp-z-btn') || e.target.closest('.node-corner-icon.is-z') || e.target.closest('.node')) return;
+    document.querySelectorAll('.node-corner-icon.is-z.active').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.node.z-targeted').forEach(n => n.classList.remove('z-targeted'));
+    window.sidePanelSelectedNodeId = null;
+});
+
+function adjustSidePanelZ(delta, panelBtn) {
+    _zFlash(panelBtn, 'sp-z-flash', 150);
+    panelBtn?.blur();
+
+    const nodeId = window.sidePanelSelectedNodeId;
+    const node = Number.isFinite(parseInt(nodeId, 10))
+        ? nodes.find(n => n.id === parseInt(nodeId, 10))
+        : null;
+
+    if (node) {
+        const el = document.getElementById('node-' + node.id);
+        const current = parseFloat(node.zIndex ?? el?.style.zIndex) || 0;
+        node.zIndex = current + delta;
+        if (el) el.style.zIndex = node.zIndex;
+        if (typeof syncEarZ === 'function') syncEarZ(node, node.zIndex);
+
+        _zFlash(el?.querySelector('.is-z'), 'z-flash', 120);
+        showZRankIndicator(node.id);
+
+        saveState();
+        return;
+    }
+
+    if (typeof nudgeSelectedTextZ === 'function' && nudgeSelectedTextZ(delta)) return;
+}
+
+function showZRankIndicator(targetId) {
+    let bar = document.getElementById('sp-z-rank');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'sp-z-rank';
+        bar.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(bar);
+    }
+
+    const list = (typeof nodes !== 'undefined' ? nodes : [])
+        .filter(n => !n.parentId)
+        .map(n => ({ id: n.id, z: parseFloat(n.zIndex) || 0 }))
+        .sort((a, b) => b.z - a.z || b.id - a.id);
+
+    bar.innerHTML = list.map(item =>
+        `<div class="sp-z-rank-cell${item.id === targetId ? ' is-target' : ''}"></div>`
+    ).join('');
+
+    const sp = document.getElementById('side-panel');
+    const anchor = document.querySelector('.sp-z-btn:not(.is-down)');
+    if (sp && anchor) {
+        const sr = sp.getBoundingClientRect();
+        const ar = anchor.getBoundingClientRect();
+        bar.style.left = (sr.right + 8) + 'px';
+        bar.style.top = ar.top + 'px';
+    }
+
+    bar.classList.add('is-visible');
+    clearTimeout(bar._hideTimer);
+    bar._hideTimer = setTimeout(() => bar.classList.remove('is-visible'), 1400);
+}
+
 document.addEventListener('contextmenu', e => {
     const tbLogo = e.target.closest('#tb-logo, #tb-logo-b');
     if (tbLogo) {
@@ -877,7 +1544,9 @@ function tbStartDrag(e) {
     tb.style.bottom = 'auto';
     tb.style.transform = 'none';
     tbDrag = true; tbSX = e.clientX; tbSY = e.clientY;
-    tbOL = r.left; tbOT = r.top; e.preventDefault();
+    tbOL = r.left; tbOT = r.top;
+    document.body.classList.add('tb-dragging');
+    e.preventDefault();
 }
 tbHandle.addEventListener('mousedown', tbStartDrag);
 tbHandleB.addEventListener('mousedown', tbStartDrag);
@@ -887,21 +1556,21 @@ document.addEventListener('mousemove', e => {
     tb.style.top = (tbOT + e.clientY - tbSY) + 'px';
     tb.style.bottom = 'auto'; tb.style.transform = 'none';
 });
-document.addEventListener('mouseup', () => { tbDrag = false; });
+document.addEventListener('mouseup', () => { tbDrag = false; document.body.classList.remove('tb-dragging'); });
 
 // ═══════════════════════════════════════════
 //  KEYBOARD
 // ═══════════════════════════════════════════
 document.addEventListener('keydown', e => {
     if (e.target.matches('textarea,input')) return;
-    if (e.key === 'Escape') {
+    if (_ksMatches(e, _ksKeyForAction('cancelTool') || 'Escape')) {
         setAddMode(null); addMode = null;
         if (connTempPath) { connTempPath.remove(); connTempPath = null; }
         draggingConn = false; connSrcId = null;
         document.body.classList.remove('is-dragging');
         ctxMenu.style.display = 'none';
     }
-    if (e.key === 'Home') resetView();
+    if (_ksMatches(e, _ksKeyForAction('resetView') || 'Home')) resetView();
     if (e.ctrlKey && e.key.toLowerCase() === 'e') {
         e.preventDefault();
         if (focusedStackId !== null) ejectOneFromStack(focusedStackId);
@@ -917,7 +1586,6 @@ document.addEventListener('mousedown', e => {
 // ═══════════════════════════════════════════
 function toggleTheme() {
     const b = document.body;
-    if (b.classList.contains('anim-mode')) return;
     b.classList.toggle('light');
     const isLight = b.classList.contains('light');
     document.querySelectorAll('.theme-switch input[type="checkbox"]').forEach(cb => {
@@ -1165,6 +1833,7 @@ function ejectOneFromStack(stackId) {
 // ═══════════════════════════════════════════
 updateDotGrid();
 applyTransform();
+renderCameraPath();
 // default nodes are generated via setTimeout inside loadState fallback
 // if there's no stored progress found.
 
@@ -1225,3 +1894,325 @@ requestAnimationFrame(function animatePulses(time) {
     }
     requestAnimationFrame(animatePulses);
 });
+
+const _ksCommands = [
+    { action: 'resetView',            label: 'Reset view' },
+    { action: 'cancelTool',           label: 'Cancel tool' },
+    { action: 'toggleTextDrift',      label: 'Toggle drift' },
+    { action: 'pausePlayCamera',      label: 'Pause / Play' },
+    { action: 'stopCamera',           label: 'Stop' },
+    { action: 'togglePathVisibility', label: 'Show / Hide path' },
+    { action: 'cameraSpeedUp',        label: 'Camera speed +' },
+    { action: 'cameraSpeedDown',      label: 'Camera speed −' },
+    { action: 'rampSpeedUp',          label: 'Ramp speed +' },
+    { action: 'rampSpeedDown',        label: 'Ramp speed −' },
+];
+
+const _ksDefaults = {
+    rows: [
+        { id: 'focusKey',      label: 'Focus numbered node', action: 'focusNumberedNode',       key: '# + f',           locked: true },
+        { id: 'pausePlayKey',  label: 'Pause / Play',        action: 'pausePlayCamera',          key: 'Space',           locked: true },
+        { id: 'stopKey',       label: 'Stop',                action: 'stopCamera',               key: 'S',               locked: true },
+        { id: 'visibilityKey', label: 'Show / Hide path',    action: 'togglePathVisibility',     key: 'H',               locked: true },
+        { id: 'speedUpKey',    label: 'Camera speed +',      action: 'cameraSpeedUp',            key: 'ArrowUp',         locked: true },
+        { id: 'speedDownKey',  label: 'Camera speed −',      action: 'cameraSpeedDown',          key: 'ArrowDown',       locked: true },
+        { id: 'rampUpKey',     label: 'Ramp speed +',        action: 'rampSpeedUp',              key: 'Shift+ArrowUp',   locked: true },
+        { id: 'rampDownKey',   label: 'Ramp speed −',        action: 'rampSpeedDown',            key: 'Shift+ArrowDown', locked: true },
+    ]
+};
+function _ksLoad() {
+    try {
+        const saved = JSON.parse(localStorage.getItem('kshortcuts') || '{}');
+        if (Array.isArray(saved.rows)) return { rows: _ksMergeRows(saved.rows, saved.deleted || []), deleted: saved.deleted || [] };
+        return {
+            rows: _ksMergeRows([
+                { id: 'focusKey', key: _ksLegacyFocusKey(saved.focusKey) },
+                { id: 'resetView', key: saved.resetView || 'Home' },
+                { id: 'addTextLayer', key: saved.addText || '' }
+            ]),
+            deleted: []
+        };
+    } catch {
+        return { rows: _ksDefaults.rows.map(r => ({ ...r })), deleted: [] };
+    }
+}
+function _ksSave(cfg) { localStorage.setItem('kshortcuts', JSON.stringify(cfg)); }
+let ksConfig = _ksLoad();
+console.log('K-shortcuts loaded:', ksConfig);
+const _heldDigits = [];
+let _heldDigitsTimer = null;
+let _ksDrag = null;
+
+function _ksMergeRows(savedRows, deleted = []) {
+    const byId = new Map(savedRows.map(r => [r.id, r]));
+    const defaultIds = new Set(_ksDefaults.rows.map(d => d.id));
+    const rows = _ksDefaults.rows
+        .filter(def => !deleted.includes(def.id))
+        .map(def => {
+            const saved = byId.get(def.id) || {};
+            const row = { ...def, ...saved, locked: true };
+            if (row.action === 'focusNumberedNode') row.key = '# + f';
+            return row;
+        });
+    for (const r of savedRows) {
+        if (!defaultIds.has(r.id) && !r.locked) rows.push({ ...r });
+    }
+    return rows;
+}
+
+function _ksLegacyFocusKey(key) {
+    const value = key || 'f';
+    return value.includes('#') ? value : '# + ' + value;
+}
+
+function toggleKShortcuts() {
+    const p = document.getElementById('kshortcuts-panel');
+    if (!p) return;
+    const open = p.style.display !== 'none';
+    p.style.display = open ? 'none' : 'block';
+    if (!open) {
+        _ksRender();
+        _ksInitDrag();
+    }
+}
+
+function _ksRender() {
+    const body = document.getElementById('kshortcuts-body');
+    if (!body) return;
+    ksConfig = _ksLoad();
+    body.innerHTML = `
+        <div class="ks-head"><span>Command</span><span>Key(s)</span><span></span></div>
+        ${ksConfig.rows.map(_ksRowHtml).join('')}
+        <button id="ks-add" onclick="ksAddShortcut()" onmousedown="event.stopPropagation()">Add shortcut</button>
+    `;
+}
+
+function _ksRowHtml(r) {
+    const commandCell = r.locked
+        ? `<span class="ks-label">${_ksEscape(r.label || '')}</span>`
+        : `<select class="ks-action-select" onchange="ksSelectAction(this)" onmousedown="event.stopPropagation()">
+               <option value="">— choose command —</option>
+               ${_ksCommands.map(c => `<option value="${c.action}"${r.action === c.action ? ' selected' : ''}>${_ksEscape(c.label)}</option>`).join('')}
+           </select>`;
+    return `
+        <div class="ks-row" data-id="${r.id}">
+            ${commandCell}
+            <input class="ks-key" value="${_ksEscape(r.key || '')}" data-field="key" oninput="ksSave(this)" onkeydown="ksFilterKeyEdit(event,this)" onmousedown="event.stopPropagation()">
+            <button class="ks-remove" onclick="ksRemoveShortcut('${r.id}')" onmousedown="event.stopPropagation()">&times;</button>
+        </div>
+    `;
+}
+
+function _ksEscape(value) {
+    return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function ksSave(input) {
+    const row = input.closest('.ks-row');
+    if (!row) return;
+    const hit = ksConfig.rows.find(r => r.id === row.dataset.id);
+    if (!hit) return;
+    hit[input.dataset.field] = input.value.trim();
+    if (input.dataset.field === 'label') hit.action = _ksActionFromLabel(hit.label, hit.action);
+    _ksSave(ksConfig);
+}
+
+function ksSelectAction(sel) {
+    const row = sel.closest('.ks-row');
+    if (!row) return;
+    const hit = ksConfig.rows.find(r => r.id === row.dataset.id);
+    if (!hit) return;
+    hit.action = sel.value;
+    hit.label = sel.options[sel.selectedIndex]?.text || '';
+    _ksSave(ksConfig);
+}
+
+function ksFilterKeyEdit(e, input) {
+    const row = input.closest('.ks-row');
+    const hit = row ? ksConfig.rows.find(r => r.id === row.dataset.id) : null;
+    if (hit?.action === 'focusNumberedNode') return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (/^[a-z0-9]$/i.test(e.key)) return;
+    if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab'].includes(e.key)) return;
+    e.preventDefault();
+}
+
+function ksAddShortcut() {
+    ksConfig.rows.push({
+        id: 'custom-' + Date.now().toString(36),
+        label: '',
+        action: 'custom',
+        key: '',
+        locked: false
+    });
+    _ksSave(ksConfig);
+    _ksRender();
+}
+
+function ksRemoveShortcut(id) {
+    const hit = ksConfig.rows.find(r => r.id === id);
+    if (hit?.locked) {
+        ksConfig.deleted = Array.from(new Set([...(ksConfig.deleted || []), id]));
+    }
+    ksConfig.rows = ksConfig.rows.filter(r => r.id !== id);
+    _ksSave(ksConfig);
+    _ksRender();
+}
+
+function _ksEventToShortcut(e) {
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+    if (e.metaKey) parts.push('Meta');
+    const key = e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    if (!['Control', 'Shift', 'Alt', 'Meta'].includes(key)) parts.push(key);
+    return parts.join('+');
+}
+
+function _ksMatches(e, shortcut) {
+    if (!shortcut) return false;
+    if (shortcut.trim().startsWith('#')) return _ksMatchesNumberShortcut(e, shortcut);
+    return _ksEventToShortcut(e).toLowerCase() === shortcut.toLowerCase();
+}
+
+function _ksMatchesNumberShortcut(e, shortcut) {
+    const trigger = shortcut.replace(/#/g, '').replace(/\+/g, ' ').trim().split(/\s+/).pop();
+    if (!trigger) return false;
+    return _ksEventToShortcut(e).toLowerCase() === trigger.toLowerCase();
+}
+
+function _ksKeyForAction(action) {
+    return ksConfig?.rows?.find(r => r.action === action)?.key || '';
+}
+
+function _ksActionFromLabel(label, fallback) {
+    const key = String(label || '').trim().toLowerCase();
+    const map = {
+        'focus numbered node': 'focusNumberedNode',
+        'reset view': 'resetView',
+        'cancel tool': 'cancelTool',
+        'add text layer': 'addTextLayer',
+        'add text node': 'addTextNode',
+        'add image node': 'addImageNode',
+        'add video node': 'addVideoNode',
+        'add html node': 'addHtmlNode',
+        'add group': 'addGroupNode',
+        'add stack': 'addStackNode',
+        'add malik': 'addMalikNode',
+        'drift': 'toggleTextDrift',
+        'toggle drift': 'toggleTextDrift'
+    };
+    return map[key] || fallback || 'custom';
+}
+
+function togglePlayback() {
+    const videos = document.querySelectorAll('video');
+    const audios = document.querySelectorAll('audio');
+    videos.forEach(v => { if (v.paused) v.play(); else v.pause(); });
+    audios.forEach(a => { if (a.paused) a.play(); else a.pause(); });
+}
+
+function cameraSpeedUp() {
+    const el = document.getElementById('cam-speed');
+    if (!el) return;
+    const v = Math.min(parseFloat(el.max), parseFloat(el.value) + 20);
+    el.value = v;
+    updateCameraPathSpeed(v);
+}
+
+function cameraSpeedDown() {
+    const el = document.getElementById('cam-speed');
+    if (!el) return;
+    const v = Math.max(parseFloat(el.min), parseFloat(el.value) - 20);
+    el.value = v;
+    updateCameraPathSpeed(v);
+}
+
+function rampSpeedUp() {
+    const el = document.getElementById('cam-ramp-value');
+    if (!el) return;
+    const v = Math.min(parseFloat(el.max), parseFloat((parseFloat(el.value) + 0.1).toFixed(2)));
+    el.value = v;
+    updateCameraPathRampValue(v);
+}
+
+function rampSpeedDown() {
+    const el = document.getElementById('cam-ramp-value');
+    if (!el) return;
+    const v = Math.max(parseFloat(el.min), parseFloat((parseFloat(el.value) - 0.1).toFixed(2)));
+    el.value = v;
+    updateCameraPathRampValue(v);
+}
+
+function _ksRunAction(action) {
+    if (action === 'resetView')            resetView();
+    if (action === 'cancelTool')           { setAddMode(null); addMode = null; }
+    if (action === 'addTextLayer')         activateTextMode();
+    if (action === 'toggleTextDrift')      toggleSelectedTextDrift();
+    if (action === 'pausePlayCamera')      pausePlayCameraPath();
+    if (action === 'stopCamera')           stopCameraPath();
+    if (action === 'togglePathVisibility') toggleCameraPathVisibility();
+    if (action === 'cameraSpeedUp')        cameraSpeedUp();
+    if (action === 'cameraSpeedDown')      cameraSpeedDown();
+    if (action === 'rampSpeedUp')          rampSpeedUp();
+    if (action === 'rampSpeedDown')        rampSpeedDown();
+}
+
+function _ksInitDrag() {
+    const panel = document.getElementById('kshortcuts-panel');
+    const header = document.getElementById('kshortcuts-header');
+    if (!panel || !header || header.dataset.dragReady) return;
+    header.dataset.dragReady = '1';
+    header.addEventListener('mousedown', e => {
+        if (e.target.closest('button')) return;
+        const r = panel.getBoundingClientRect();
+        _ksDrag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+        panel.style.left = r.left + 'px';
+        panel.style.top = r.top + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        e.preventDefault();
+    });
+}
+
+document.addEventListener('mousemove', e => {
+    if (!_ksDrag) return;
+    const panel = document.getElementById('kshortcuts-panel');
+    if (!panel) return;
+    const x = Math.max(8, Math.min(window.innerWidth - panel.offsetWidth - 8, e.clientX - _ksDrag.dx));
+    const y = Math.max(8, Math.min(window.innerHeight - panel.offsetHeight - 8, e.clientY - _ksDrag.dy));
+    panel.style.left = x + 'px';
+    panel.style.top = y + 'px';
+});
+
+document.addEventListener('mouseup', () => { _ksDrag = null; });
+
+document.addEventListener('keydown', e => {
+    if (e.target.matches('input,textarea')) return;
+    if (e.repeat) return;
+    if (/^[0-9]$/.test(e.key)) {
+        _heldDigits.push(e.key);
+        while (_heldDigits.length > 2) _heldDigits.shift();
+        clearTimeout(_heldDigitsTimer);
+        _heldDigitsTimer = setTimeout(() => { _heldDigits.length = 0; }, 1400);
+        return;
+    }
+    const focusRow = ksConfig.rows.find(r => r.action === 'focusNumberedNode');
+    if (_ksMatches(e, focusRow?.key || '# + f') && _heldDigits.length > 0) {
+        e.preventDefault();
+        const num = parseInt(_heldDigits.join(''));
+        const hit = nodes.find(n => _nodeNums.get(n.id) === num);
+        if (hit) toggleFocusOrb(hit.id);
+        _heldDigits.length = 0;
+        clearTimeout(_heldDigitsTimer);
+        return;
+    }
+    const hit = ksConfig.rows.find(r => r.action !== 'focusNumberedNode' && _ksMatches(e, r.key));
+    if (hit) {
+        console.log('Shortcut triggered:', hit.action, 'key:', _ksEventToShortcut(e));
+        e.preventDefault();
+        _ksRunAction(hit.action);
+    }
+});
+

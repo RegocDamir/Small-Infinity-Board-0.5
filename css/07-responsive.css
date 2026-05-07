@@ -1,0 +1,15 @@
+        @media (max-width: 760px) {
+            #side-panel {
+                width: calc(100vw - 28px);
+            }
+
+            #sp-top-bar,
+            .cam-actions,
+            .cam-extra-row {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .tc-effects {
+                grid-template-columns: 1fr;
+            }
+        }

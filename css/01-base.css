@@ -1,0 +1,158 @@
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700&family=Roboto:wght@400;700&display=swap');
+
+        @font-face {
+            font-family: 'Lora';
+            src: url('../fonts/Lora-VariableFont_wght.ttf') format('truetype');
+            font-weight: 400 700;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'Lora';
+            src: url('../fonts/Lora-Italic-VariableFont_wght.ttf') format('truetype');
+            font-weight: 400 700;
+            font-style: italic;
+        }
+
+        @font-face {
+            font-family: 'Roboto Local';
+            src: url('../fonts/Roboto-VariableFont_wdth,wght.ttf') format('truetype');
+            font-weight: 100 900;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'Roboto Local';
+            src: url('../fonts/Roboto-Italic-VariableFont_wdth,wght.ttf') format('truetype');
+            font-weight: 100 900;
+            font-style: italic;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #313131;
+            --dot-color: rgba(255, 255, 255, 0.171);
+            --dot-size: 2px;
+            --grid-size: 50px;
+            --bar-bg: rgba(30, 24, 26, 0.96);
+            --bar-border: rgba(255, 255, 255, 0.08);
+            --accent: #c8ff00;
+            --accent2: #00d4ff;
+            --node-border: #ffffff;
+            --node-bg: rgba(28, 22, 24, 0.97);
+            --text: #e8e8e8;
+            --muted: #7a6a6e;
+            --conn-color: #ffffff;
+            --board-line-blue: #0500ff;
+            --port-bg: rgba(255,255,255,0.25);
+            --port-border: #ffffff;
+            --port-hover: #ffffff;
+            --dot-icon: var(--muted);
+            --tb-hover-bg: rgba(255, 255, 255, 0.06);
+            --tb-hover-border: rgba(255, 255, 255, 0.09);
+            --tb-active-bg: rgba(253, 253, 253, 0.08);
+            --tb-active-border: rgba(253, 253, 253, 0.25);
+            --tb-active-glow: 0 0 10px rgba(253, 253, 253, 0.12), 0 0 20px rgba(253, 253, 253, 0.06);
+            --tb-icon-active-glow: 0 0 10px rgba(253, 253, 253, 0.12);
+            --tb-active-text: #fdfdfd;
+            --tb-hover-text: var(--text);
+            --placeholder-color: rgba(255, 255, 255, 0.2);
+            --ctx-text: var(--text);
+            --pulse-color: var(--conn-color);
+        }
+
+        body.light {
+            --bg: #edddd4;
+            --dot-color: #afa38f;
+            --dot-size: 1.5px;
+            --grid-size: 32px;
+            --node-border: rgba(255, 255, 255, 0.15);
+            --node-bg: #197278;
+            --bar-bg: rgba(255, 255, 255, 0.92);
+            --bar-border: rgba(0, 0, 0, 0.08);
+            --conn-color: #3b878c;
+            --port-bg: #197278;
+            --port-border: #3b878c;
+            --port-hover: #2199a1;
+            --dot-icon: #0f464a;
+            --tb-hover-bg: rgba(0, 110, 255, 0.15);
+            --tb-hover-border: rgba(0, 110, 255, 0.5);
+            --tb-active-bg: rgba(0, 110, 255, 0.15);
+            --tb-active-border: rgba(0, 110, 255, 0.6);
+            --tb-active-glow: 0 0 15px rgba(0, 110, 255, 0.4), 0 0 30px rgba(0, 110, 255, 0.2);
+            --tb-icon-active-glow: 0 0 15px rgba(0, 110, 255, 0.4);
+            --tb-active-text: #006eff;
+            --tb-hover-text: #006eff;
+            --placeholder-color: #0d383b;
+            --ctx-text: #197278;
+            --pulse-color: #197278;
+        }
+
+        body.light .node-img-area,
+        body.light .node-video-area {
+            background: #ff751f;
+            border: 1.2px solid #c0393f;
+        }
+
+        body.light .node-img-area {
+            border-style: solid;
+        }
+
+        body.light .node-text-input {
+            background: #737373;
+            border: 1.2px solid #c0393f;
+            color: #fff;
+        }
+
+        body.light .node-text-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        body {
+            background: var(--bg);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            font-family: 'DM Mono', monospace;
+            user-select: none;
+        }
+
+        #canvas-wrap {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            cursor: default;
+        }
+
+        #canvas-wrap.panning {
+            cursor: grabbing;
+        }
+
+        #canvas-wrap.adding {
+            cursor: crosshair;
+        }
+
+        #dot-grid {
+            position: absolute;
+            inset: -75vmax;
+            background-image: radial-gradient(circle, var(--dot-color) var(--dot-size), transparent 0);
+            background-size: var(--grid-size) var(--grid-size);
+            transform-origin: center;
+            pointer-events: none;
+        }
+
+        #scene {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 0;
+            transform-origin: 0 0;
+        }
